@@ -1,6 +1,7 @@
 '''
 Classes for the objects used in the simulation
 '''
+from Generic_Calcs import calc_adj_mat
 import math
 from sklearn import neighbors
 import numpy as np
@@ -8,40 +9,23 @@ import random
 
 class Map:
     '''Holds all the data points in the area (The area is rectangle)'''
-    def __init__(self,x_bounds,y_bounds, points = []):
+    def __init__(self,x_bounds,y_bounds, data_points = [], obstacles = []):
         '''
         :param x_bounds: a tuple (+float,+float) stating the bounds of the x coordinates
         :param y_bounds:  a tuple (+float,+float) stating the bounds of the y coordinates
-        :param points: list of points on the map
+        :param data_points: list of DataPoints on the map
+        :param obstacles: list of Obstacles on the map
+
         '''
         assert (x_bounds[0]<x_bounds[1] and x_bounds[0]>0 and x_bounds[1]>0)
         assert (y_bounds[0]<y_bounds[1] and y_bounds[0]>0 and y_bounds[1]>0)
         self.x_bounds = x_bounds
         self.y_bounds = y_bounds
-        self.points = points
+        self.data_points = data_points
+        self.obstacles = obstacles
+        self.neighbors = {}
 
 
-def create_random_map(n_points,size, only_data_points = True):
-    '''
-    Creates a random Map object
-    :param n_points: how many data points should the map have
-    :param size: a tuple (a,b) stating the size of the rectangle.
-    :param only_data_points: If true, all points are data-points (can be reported), else some of them can be obstacles
-    :return: A map n-points and bounds fitting the size
-    '''
-
-    #create data points
-    points = []
-    for i in range(n_points):
-        y_cor =  round(random.uniform(0,size[0]),2)
-        x_cor = round(random.uniform(0,size[1]),2)
-
-        if only_data_points:
-            new_point = DataPoint(x_cor,y_cor)
-        #add other points when the model supports it
-        points.append(new_point)
-    res_map = Map((0,size[1]),(0,size[0]),points)
-    return res_map
 
 class Point:
     '''General point in the Map'''
@@ -67,14 +51,20 @@ class DataPoint(Point):
         self.x = x
         self.y = y
         self.s = s
+        self.neighbors = []
         self.history = []
 
     def __repr__(self):
         return f'Data Point: (x:{self.x},y:{self.y},s:{self.s})'
 
-    def update_s(self, new_s):
-        '''Changes s value and saves the previous one in history'''
-        self.history.append(new_s)
+    def update_s(self, new_s, intervention = False):
+        '''
+        Changes s value and saves the previous one in history
+        :param new_s:
+        :param intervention: If this is due to intervention, it will be recorded at hisotry
+        :return:
+        '''
+        self.hisotry.append((new_s, new_s-self.s, intervention))
         self.s = new_s
 
     def clear_history(self):
@@ -83,43 +73,55 @@ class DataPoint(Point):
 
 
 class Observation(DataPoint):
+    '''An observation produced by reporter, representing perceived s in point p at time t '''
     #TODO work on this
     def __init__(self, x, y, t,reported_s,v = None, s = None):
         super().__init__(self, x, y, t)
         self.v = v
         self.reported_s = reported_s
 
-def make_kernel(alpha,beta):
-    '''
-    Creates the function that will be used as the kernel for points effecting each other
-    :param alpha: Decay in distance parameter
-    :param beta: Decay in time parameter
-    :return: Function  that takes in observation and a point and calculates observations weight in affecting the point
-    '''
-    def calc_weight(source, target, dist_decay = alpha, time_decay = beta):
-        '''
-        :param source: source observation (FieldObservation)
-        :param target: target point (FieldPoint)
-        :return: source's weight in predicting target's s
-        '''
-        assert source.t < target.t
-        time_diff = target.t-source.t
-        dist = source.calc_dist(target)
-        return math.exp(-time_decay*time_diff-dist_decay*dist)
-    return calc_weight
+
+class Reporter:
+    '''Representing a reporter'''
+    def __init__(self, id,data_points):
+        self.id = id
+        self.data_points = data_points
+        self.reputation = None #Reputation will be generated based on first report
 
 
 
-def make_neighbors_list(data_points,dist_radius,time_range, limit = 8):
+
+def make_neighbors_list_geo(data_points, dist_radius, limit=8):
+    # TODO finish this
     '''
-    Calculates the neighbors for each data_point
+    Calculates the neighbors for each data_point based on distance only
     :param data_points: a list of FieldPoints
     :param dist_radius:  How far neighbors can be
-    :param time_range: How long in the past is relevant
     :param limit = limit number of neighbors
-    :return: a list where for the item in index i contains all the neighbors of data_points[i]
+    :return: a dictionary {point: list of point's neighbors}
     '''
-    location_arr = np.array([[point.x,point.y] for point in data_points])
-    time_arr = np.array([point.t] for point in data_points)
+    location_arr = np.array([[point.x, point.y] for point in data_points])
+    adj_mat = calc_adj_mat(location_arr)
+    n = len(data_points)
+
+    res_dic = {}
+
+    for i in range(n):
+        point_distances = adj_mat[i]
+
+        #Sorts the neighbors, second row is the index in the original array
+        point_distances = np.vstack((adj_mat[i], np.array([x for x in range(n)])))
+        point_distances = point_distances[:, point_distances[0].argsort()]
+        optional_neighbors = point_distances[:limit+1]
+        neighbors_mask = optional_neighbors[0]<dist_radius
+        neighbors_indices = optional_neighbors[1][neighbors_mask]
+        point_neighbors = []
+        for index in neighbors_indices[1:]: #starting from 1 because point is always closest to itself
+            point_neighbors.append(data_points[int(index)])
+        res_dic[data_points[i]] = point_neighbors
+    return res_dic
+
+
+
 
 

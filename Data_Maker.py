@@ -7,7 +7,7 @@ import random as random
 
 from scipy.stats import gamma
 
-from Field_Points import FieldPoint, make_kernel
+from World_Objects import FieldPoint, make_kernel
 
 
 def main():

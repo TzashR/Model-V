@@ -25,20 +25,51 @@ class Map:
         self.obstacles = obstacles
         self.neighbors = {}
 
+    def make_neighbors_list_geo(self, dist_radius = float('inf'), limit=8):
+        # TODO finish this
+        '''
+        Calculates the neighbors for each data_point based on distance only
+        :param data_points: a list of FieldPoints
+        :param dist_radius:  How far neighbors can be
+        :param limit = limit number of neighbors
+        :return: a dictionary {point: list of point's neighbors}
+        '''
+        data_points = self.data_points
+        location_arr = np.array([[point.x, point.y] for point in data_points])
+        adj_mat = calc_adj_mat(location_arr)
+        n = len(data_points)
+
+        res_dic = {}
+
+        for i in range(n):
+            #Sorts the neighbors, second row is the index in the original array
+            point_distances = np.vstack((adj_mat[i], np.array([x for x in range(n)])))
+            point_distances = point_distances[:, point_distances[0].argsort()]
+            optional_neighbors = point_distances[:limit+1]
+            neighbors_mask = optional_neighbors[0]<dist_radius
+            neighbors_indices = optional_neighbors[1][neighbors_mask]
+            point_neighbors = []
+            for index in neighbors_indices[1:]: #starting from 1 because point is always closest to itself
+                point_neighbors.append(data_points[int(index)])
+            res_dic[data_points[i].id] = point_neighbors
+        self.neighbors = res_dic
+
 
 
 class Point:
     '''General point in the Map'''
-    def __init__(self, x, y):
+    def __init__(self, x, y, id):
         '''
         :param x: x coordinate
         :param y: y coordinate
+        :param id: id for the point
         '''
         self.x = x
         self.y = y
+        self.id = id
 
     def __repr__(self):
-        return f'Point: (x:{self.x},y:{self.y})'
+        return f'Point: (id:{id}, x:{self.x},y:{self.y})'
 
     def calc_dist(self, other):
         ''' calculates euclidean distance between two points'''
@@ -83,43 +114,32 @@ class Observation(DataPoint):
 
 class Reporter:
     '''Representing a reporter'''
-    def __init__(self, id,data_points):
+    def __init__(self, id,data_points,veracity):
         self.id = id
         self.data_points = data_points
-        self.reputation = None #Reputation will be generated based on first report
+        self.veracity = veracity # The higher this is, the more likely the reporter to give reliable reports
+        self.veracity = None #Reputation will be generated based on first report
+
+    def report_points(self, T):
+        '''
+        Generate reports on the reporter's data points. The higher the s of the point, the more likely
+        it will be reported.
+        :param: Report date (or T)
+        :return: A list of reports. Each report is a 5 tuple: (point_id, reporter_id T, reported s, true s)
+        '''
+        reports = []
+        for point in self.data_points:
+            does_report = random.uniform(0,1) < point.s # chance to report goes up the more infected the point is
+            if not does_report: continue
+            reported_s = random.gauss(point.s,(1-self.veracity)/3.5) # This is not scientific
+            reports.append([T,point.id,self.id, reported_s, self.veracity, point.s])
+        return reports
 
 
 
 
-def make_neighbors_list_geo(data_points, dist_radius, limit=8):
-    # TODO finish this
-    '''
-    Calculates the neighbors for each data_point based on distance only
-    :param data_points: a list of FieldPoints
-    :param dist_radius:  How far neighbors can be
-    :param limit = limit number of neighbors
-    :return: a dictionary {point: list of point's neighbors}
-    '''
-    location_arr = np.array([[point.x, point.y] for point in data_points])
-    adj_mat = calc_adj_mat(location_arr)
-    n = len(data_points)
 
-    res_dic = {}
 
-    for i in range(n):
-        point_distances = adj_mat[i]
-
-        #Sorts the neighbors, second row is the index in the original array
-        point_distances = np.vstack((adj_mat[i], np.array([x for x in range(n)])))
-        point_distances = point_distances[:, point_distances[0].argsort()]
-        optional_neighbors = point_distances[:limit+1]
-        neighbors_mask = optional_neighbors[0]<dist_radius
-        neighbors_indices = optional_neighbors[1][neighbors_mask]
-        point_neighbors = []
-        for index in neighbors_indices[1:]: #starting from 1 because point is always closest to itself
-            point_neighbors.append(data_points[int(index)])
-        res_dic[data_points[i]] = point_neighbors
-    return res_dic
 
 
 

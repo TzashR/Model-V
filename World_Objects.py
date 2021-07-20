@@ -17,13 +17,18 @@ class Map:
         :param obstacles: list of Obstacles on the map
 
         '''
-        assert (x_bounds[0]<x_bounds[1] and x_bounds[0]>0 and x_bounds[1]>0)
-        assert (y_bounds[0]<y_bounds[1] and y_bounds[0]>0 and y_bounds[1]>0)
+        assert (x_bounds[0]<x_bounds[1] and x_bounds[0]>=0 and x_bounds[1]>=0)
+        assert (y_bounds[0]<y_bounds[1] and y_bounds[0]>=0 and y_bounds[1]>=0)
         self.x_bounds = x_bounds
         self.y_bounds = y_bounds
         self.data_points = data_points
         self.obstacles = obstacles
         self.neighbors = {}
+    def __repr__(self):
+        return f'Map bounds {self.x_bounds, self.y_bounds}' \
+               f'Number of DataPoints {len(self.data_points)}' \
+               f'Number of obstcales {len(self.obstacles)}'
+
 
     def make_neighbors_list_geo(self, dist_radius = float('inf'), limit=8):
         # TODO finish this
@@ -58,7 +63,7 @@ class Map:
 
 class Point:
     '''General point in the Map'''
-    def __init__(self, x, y, id):
+    def __init__(self, x, y, point_id):
         '''
         :param x: x coordinate
         :param y: y coordinate
@@ -66,10 +71,10 @@ class Point:
         '''
         self.x = x
         self.y = y
-        self.id = id
+        self.id  = point_id
 
     def __repr__(self):
-        return f'Point: (id:{id}, x:{self.x},y:{self.y})'
+        return f'Point: (id:{self.id}, x:{self.x},y:{self.y})'
 
     def calc_dist(self, other):
         ''' calculates euclidean distance between two points'''
@@ -77,10 +82,8 @@ class Point:
 
 class DataPoint(Point):
     '''A data point of interest in the map'''
-    def __init__(self, x, y, s = 0):
-        super().__init__(self, x, y, t)
-        self.x = x
-        self.y = y
+    def __init__(self, x, y,point_id, s = 0):
+        super().__init__(x, y,point_id)
         self.s = s
         self.neighbors = []
         self.history = []
@@ -136,12 +139,32 @@ class Reporter:
         return reports
 
 
+def create_random_map(n_points, size, only_data_points=True):
+    '''
+    Creates a random Map object
+    :param n_points: how many data points should the map have
+    :param size: a tuple (a,b) stating the size of the rectangle.
+    :param only_data_points: If true, all points are data-points (can be reported), else some of them can be obstacles
+    :return: A map n-points and bounds fitting the size
+    '''
+
+    # create data points
+    points = []
+    cur_id = 0
+    for i in range(n_points):
+        y_cor = round(random.uniform(0, size[0]), 2)
+        x_cor = round(random.uniform(0, size[1]), 2)
+
+        if only_data_points:
+            new_point = DataPoint(x_cor, y_cor,cur_id)
+            points.append(new_point)
+        # add other points when the model supports it
+        cur_id+=1
+    res_map = Map((0, size[1]), (0, size[0]), points)
+    return res_map
+
+def generate_random_reporters(data_points, max_points = 4):
 
 
 
-
-
-
-
-
-
+map = create_random_map(20,(2000,2000))

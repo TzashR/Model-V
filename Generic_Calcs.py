@@ -2,28 +2,31 @@
 Functions used on data points. Useful when generating data,training the model and when predicting
 '''
 
-from World_Objects import *
+import random
+import numpy as np
+import math
 
-
-def calculate_added_infection_discrete(target, neighbors,
+def calculate_point_discrete(target, neighbors,
                                        infection_odds=lambda x: random.uniform(0, 1) < math.exp(-0.02 * x),
-                                       infector_effect=0.3):
+                                       infector_effect=0.03):
     '''Calculates the target's value based on the set of sources using discrete function
         This is a simplification and we use it to start off
     :param target: Datapoint to get the value
     :param neighbors: Datapoint's neighbors
     :param infection_odds:A function that returns true if the neighbor infects the target
-    :return: The factor that should be added to the datapoint's s.
+    :return: The new value of the datapoint's s.
     '''
     infectors = 0
     if target.s > 2: #if target is infected, things can get worse even without external infection
         infectors += 1
     for neighbor in neighbors:
-        if neighbor.s > 2: #only infected neighbors can infect
+        if neighbor.s > 0.2: #only infected neighbors can infect
             dist = target.calc_dist(neighbor)
             if infection_odds(dist):
                 infectors += 1
-    infection = min(infector_effect * 0.3, 4)
+    infection_factor = infector_effect * infectors
+    new_s = min(target.s+infection_factor,1)
+    return new_s
 
 
 def calculate_point_weights(target, sources, weight_func):
@@ -67,27 +70,6 @@ def make_kernel(alpha, beta):
     return calc_weight
 
 
-def create_random_map(n_points, size, only_data_points=True):
-    '''
-    Creates a random Map object
-    :param n_points: how many data points should the map have
-    :param size: a tuple (a,b) stating the size of the rectangle.
-    :param only_data_points: If true, all points are data-points (can be reported), else some of them can be obstacles
-    :return: A map n-points and bounds fitting the size
-    '''
-
-    # create data points
-    points = []
-    for i in range(n_points):
-        y_cor = round(random.uniform(0, size[0]), 2)
-        x_cor = round(random.uniform(0, size[1]), 2)
-
-        if only_data_points:
-            new_point = DataPoint(x_cor, y_cor)
-            points.append(new_point)
-        # add other points when the model supports it
-    res_map = Map((0, size[1]), (0, size[0]), points)
-    return res_map
 
 def calc_adj_mat(points):
     '''

@@ -7,7 +7,7 @@ import numpy as np
 import math
 
 def calculate_point_discrete(target, neighbors,
-                                       infection_odds=lambda x: random.uniform(0, 1) < math.exp(-0.02 * x),
+                                       infection_odds=lambda x: random.uniform(0, 1) < math.exp(-0.005 * x),
                                        infector_effect=0.03):
     '''Calculates the target's value based on the set of sources using discrete function
         This is a simplification and we use it to start off
@@ -17,10 +17,10 @@ def calculate_point_discrete(target, neighbors,
     :return: The new value of the datapoint's s.
     '''
     infectors = 0
-    if target.s > 2: #if target is infected, things can get worse even without external infection
+    if target.s > 0: #if target is infected, things can get worse even without external infection
         infectors += 1
     for neighbor in neighbors:
-        if neighbor.s > 0.2: #only infected neighbors can infect
+        if neighbor.s > 0: #only infected neighbors can infect
             dist = target.calc_dist(neighbor)
             if infection_odds(dist):
                 infectors += 1

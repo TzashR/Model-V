@@ -84,3 +84,9 @@ def calc_adj_mat(points):
         res_mat[i] = np.linalg.norm(points - points[i], axis=1)
     np.fill_diagonal(res_mat, 0)
     return res_mat
+
+
+
+
+
+

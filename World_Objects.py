@@ -87,14 +87,16 @@ class Point:
 class DataPoint(Point):
     '''A data point of interest in the map'''
 
-    def __init__(self, x, y, point_id, s=0):
+    def __init__(self, x, y, point_id,hyper_prior, s=0):
         super().__init__(x, y, point_id)
         self.s = s
         self.neighbors = []
         self.history = []
+        self.last_report_time = 0
+        self.prior = hyper_prior #The current distribution of the point's s. should be a dictionary {"a":2, "scale":1}
 
     def __repr__(self):
-        return f'Data Point: (x:{self.x},y:{self.y},s:{self.s})'
+        return f'Data Point: (x:{self.x},y:{self.y},s:{self.s}, current report:{self.current_report})'
 
     def update_s(self, new_s, intervention=False):
         '''
@@ -112,15 +114,10 @@ class DataPoint(Point):
         '''clears the points history'''
         self.history = []
 
+    def update_report(self, reported_s, veracity):
+        assert 0<=reported_s<=1 and 0<=veracity<=1
+        self.last_report = (reported_s,veracity)
 
-class Observation(DataPoint):
-    '''An observation produced by reporter, representing perceived s in point p at time t '''
-
-    # TODO work on this
-    def __init__(self, x, y, t, reported_s, v=None, s=None):
-        super().__init__(self, x, y, t)
-        self.v = v
-        self.reported_s = reported_s
 
 
 class Reporter:

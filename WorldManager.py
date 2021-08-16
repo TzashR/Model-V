@@ -9,14 +9,19 @@ from matplotlib import pyplot as plt
 
 
 class WorldManager:
-    def __init__(self, map, reporters, point_calc_func, dist_radius=500, time_range=5, neighbors_limit=8):
+    def __init__(self, map, reporters, point_calc_func, dist_type, prior_params, priors={}, dist_radius='inf',
+                 time_range=5,
+                 neighbors_limit=8, prior_decay=0.05):
         '''
         :param map: a Map object of the world
         :param reporters: list of Reporter objects that provide the reports
         :param point_calc_func: The function used to calculate a points value based on it's neighbors
+        :param dist_type: the type of distribution for each point (e.g gamma)
+        :param priors: a list of prior params for each point
         :param dist_radius: radius used to calculate Datapoint's neighbors
         :param time_range: time range used to calculate Datapoint's neighbors
         :param neighbors_limit: Max amount of neighbors a Datapoint can have
+        :param prior_decay: How much a point's prior will revert back to hyper-prior every day if no report
         '''
         self.map = map
         self.reporters = reporters
@@ -25,6 +30,15 @@ class WorldManager:
         self.time_range = time_range
         self.neighbors_limit = neighbors_limit
         self.T = 0  # Current time
+        self.dist_type = dist_type
+        self.hyper_prior = prior_params
+        self.prior_decay = prior_decay
+
+        # assign prior params to any point we know nothing about
+        self.priors = priors
+        for p in map.data_points:
+            if p.id not in self.priors:
+                self.priors[p.id] = prior_params
 
         # Real history is a df where every row represents a day and every coloumn a point
         self.history = pd.DataFrame([], columns=[point.id for point in map.data_points])
@@ -43,13 +57,13 @@ class WorldManager:
         :return:
         '''
         if with_show:
-            from matplotlib import pyplot as plt
             plt.ion()
 
         for i in range(days):
             self.apply_calculations()
             self.update_history()
             self.generate_reports()
+            self.decay_unreported_points()
 
             if with_show:
                 self.get_plot(with_show_values).draw()
@@ -62,7 +76,6 @@ class WorldManager:
         for point in self.map.data_points:
             new_s = self.point_calc(point, self.map.neighbors[point.id])
             point.update_s(new_s)
-        self.update_history()
 
     def generate_reports(self):
         '''Generates reports from the reporters and updates self.reports'''
@@ -71,6 +84,55 @@ class WorldManager:
             new_reports += reporter.report_points(self.T)
         df = pd.DataFrame(new_reports, columns=['T', 'POINT_ID', 'REPORTER_ID', 'REPORTED_S', 'Veracity', 'TRUE_S'])
         self.reports = self.reports.append(df)
+
+    def update_point_dist_by_report(self, point_id):  # TODO make sure after every report point prior changes
+        pass
+
+    def predict_point_report(self,target, s, v, n_samples = 10000):
+        '''
+
+        :param target: A datapoint
+        :param s: report's s
+        :param v:  report's veracity
+        :return: updates the point's prior
+        '''
+        prior_params = target.prior.copy()
+        prior_params[
+            'size'] = n_samples  # This is done so that the rvs function would be able to get the size parameter
+        prior_samples = self.dist_type.rvs(**prior_params)
+        report_samples = np.full(n_samples,s)
+
+        weighted_samples = (1 - v) * prior_samples +v * report_samples
+        posterior = self.dist_type.fit(weighted_samples)
+        #TODO finish this
+
+    def decay_unreported_points(self, k=10000):
+        '''
+        For every points we didn't get a report, we make the points prior to look more like the hyper-prior
+        '''
+        t = self.T
+        hp_params = self.hyper_prior
+        hp_params['size'] = k
+
+        hp_fit_for_assert = self.dist_type.fit(self.dist_type.rvs(**hp_params))
+        assert (abs(hp_fit_for_assert[0] - hp_params["a"]) < 0.1 and abs(hp_fit_for_assert[0] - hp_params[
+            "scale"]) < 0.1), "Maybe the code works with scipy.stats.gamma distribution but you provided something else"
+
+        for p in self.map.data_points:
+            if p.last_report_t < t:
+                prior_params = p.prior.copy()
+                prior_params[
+                    'size'] = k  # This is done so that the rvs function would be able to get the size parameter
+
+                prior_samples = self.dist_type.rvs(**prior_params)  # returns a vector of k samples
+                hp_samples = self.dist_type.rvs(**hp_params)
+                weighted_samples = (1 - self.prior_decay) * prior_samples + (self.prior_decay) * hp_samples
+                posterior = self.dist_type.fit(weighted_samples)
+
+                #This only works with gamma!!
+                p.prior["a"] = posterior[0]
+                p.prior["scale"] = posterior[2]
+
 
     def update_history(self):
         '''Writes the new point values to the history'''
@@ -109,8 +171,9 @@ class WorldManager:
         self.history.to_csv("values history.csv")
 
     def get_plot(self, with_values=False):
+        # TODO add with_values functionality
         '''
-        Plots cu
+        Plots current map state
         :param with_values: If true, annotates the value next to each point
         :return: returns a plot object
         '''
@@ -123,3 +186,5 @@ class WorldManager:
     def show(self, with_values=False):
         '''Plots the current state of the DataPoints'''
         self.get_plot(with_values).show()
+
+#TODO write a function conjugate (instead of repeating code in predict_point_report and decay_time)

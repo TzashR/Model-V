@@ -4,10 +4,12 @@ Functions used on data points. Useful when generating data,training the model an
 
 import math
 import random
+
 import numpy as np
+import scipy.stats._continuous_distns
 
 
-#True calculations - wat the simulations uses, not what "we" know
+# True calculations - wat the simulations uses, not what "we" know
 def calculate_point_discrete(target, neighbors,
                              infection_odds=lambda x: random.uniform(0, 1) < math.exp(-0.005 * x),
                              infector_effect=0.03):
@@ -49,8 +51,6 @@ def calculate_point_weights(target, neighbors, weight_func):
     return weighted_values_sum / weights_sum
 
 
-
-
 def predict_point(target, neighbors, weight_func, priors, dist_type, dist_func, k=100):
     '''
     :param target: Target Datapoint
@@ -79,6 +79,27 @@ def predict_point(target, neighbors, weight_func, priors, dist_type, dist_func, 
     return new_dist
 
 
+def fit_average_posterior(dist1_params, dist2_params, dist1_type, dist2_type, weights, result_dist_type,
+                          n_samples=10000):
+    '''
+    Takes two distributions, samples from both, for each observation calculates weighted avreage according to weights
+    and fits a new distribution
+    :param dist1_params: Parameters for first distribution. Should be a dic with the parameters
+    :param dist2_params: Same as dist1
+    :param dist1_type: type of dist1. Should have rvs method
+    :param dist2_type: type of dist2. Should have rvs method
+    :param weights: a tuple stating how much weight to give each distribution
+    :param result_dist_type: A type of distribution e.g. gamma
+    :param n_samples:  how many samnples to take from each distribution
+    :return: Distribution params, using the result_dist_type fit method.
+    '''
+    assert (sum(weights) == 1), f"weights should add up to 1. Provided weights are {weights}"
+
+    dist1_samples = dist1_type.rvs(**dist1_params, size=n_samples)  # returns a vector of n_samples samples
+    dist2_samples = dist2_type.rvs(**dist2_params, size=n_samples)
+
+    weighted_samples = weights[0] * dist1_samples + weights[1] * dist2_samples
+    return result_dist_type.fit(weighted_samples)
 
 
 def make_kernel(alpha, beta, time_limit=5):
@@ -118,3 +139,32 @@ def calc_adj_mat(points):
         res_mat[i] = np.linalg.norm(points - points[i], axis=1)
     np.fill_diagonal(res_mat, 0)
     return res_mat
+
+
+def plot_dist(dist_type: scipy.stats._continuous_distns, dist_params: dict or tuple):
+    '''
+    Plots a graph of the distribution
+    :param dist_type: distribution type with rvs function
+    :param dist_params: params for the distribution
+    :return:
+    '''
+    x = np.linspace(0, 1, 1000)
+
+    if isinstance(dist_params,dict):
+        scale = dist_params["scale"]
+        a = dist_params["a"]
+        loc = dist_params["loc"]
+        dist = dist_type(**dist_params)
+    else:
+        a,loc,scale = dist_params
+        dist = dist_type(*dist_params)
+
+    y = dist.pdf(x)
+    plt.plot(x, y)
+    plt.title(
+        f'a = {round(a, 2)}, scale = {round(scale, 2)}, loc = {round(loc, 2)}, mean = {round(a * scale, 2)}, SD = {round(a * (scale ** 2), 2)}')
+    plt.show()
+
+
+# %%
+from matplotlib import pyplot as plt

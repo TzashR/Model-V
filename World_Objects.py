@@ -6,7 +6,7 @@ import random
 
 import numpy as np
 
-from Generic_Calcs import calc_adj_mat
+from Generic_Calcs import calc_adj_mat, plot_dist
 
 
 class Map:
@@ -92,11 +92,10 @@ class DataPoint(Point):
         self.s = s
         self.neighbors = []
         self.history = []
-        self.last_report_time = 0
         self.prior = hyper_prior #The current distribution of the point's s. should be a dictionary {"a":2, "scale":1}
 
     def __repr__(self):
-        return f'Data Point: (x:{self.x},y:{self.y},s:{self.s}, current report:{self.current_report})'
+        return f'Data Point {self.id}: (x:{self.x},y:{self.y},s:{self.s})'
 
     def update_s(self, new_s, intervention=False):
         '''
@@ -157,11 +156,12 @@ class Reporter:
         self.data_points.append(p)
 
 
-def create_random_map(n_points, size, only_data_points=True):
+def create_random_map(n_points, size,hyper_prior, only_data_points=True):
     '''
     Creates a random Map object
     :param n_points: how many data points should the map have
     :param size: a tuple (a,b) stating the size of the rectangle.
+    :param hyper_prior: the default prior distribution every datapoint will have
     :param only_data_points: If true, all points are data-points (can be reported), else some of them can be obstacles
     :return: A map n-points and bounds fitting the size
     '''
@@ -174,7 +174,7 @@ def create_random_map(n_points, size, only_data_points=True):
         x_cor = round(random.uniform(0, size[1]), 2)
 
         if only_data_points:
-            new_point = DataPoint(x_cor, y_cor, f"p{cur_id}")
+            new_point = DataPoint(x_cor, y_cor, f"p{cur_id}", hyper_prior)
             points.append(new_point)
         # add other points when the model supports it
         cur_id += 1

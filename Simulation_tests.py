@@ -40,8 +40,10 @@ def guess_parameters_ground_truth(data_points, neighbors, possible_x, possible_y
     return combinations[best_index]
 
 
-def guess_parameters_reports():
+def guess_infection_factor_reports():
     '''Another test for the simulation - calculate point values based on partial reports with weights'''
+    options =
+
     pass
 
 # dmap = create_random_map(20,(2000,2000))

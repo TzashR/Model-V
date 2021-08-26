@@ -79,7 +79,7 @@ class Point:
     def __repr__(self):
         return f'Point: (id:{self.id}, x:{self.x},y:{self.y})'
 
-    def calc_dist(self, other):
+    def calc_distance(self, other):
         ''' calculates euclidean distance between two points'''
         return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
 
@@ -87,7 +87,7 @@ class Point:
 class DataPoint(Point):
     '''A data point of interest in the map'''
 
-    def __init__(self, x, y, point_id,hyper_prior, s=0):
+    def __init__(self, x, y, point_id,hyper_prior = None, s=0):
         super().__init__(x, y, point_id)
         self.s = s
         self.neighbors = []
@@ -147,6 +147,9 @@ class Reporter:
             does_report = random.uniform(0, 1) < (point.s+0.15)  # chance to report goes up the more infected the point is
             if not does_report: continue
             reported_s = random.gauss(point.s, (1 - self.veracity) / 3.5)  # This is not scientific
+            if reported_s > 1: reported_s = 1
+            elif reported_s < 0 : reported_s = 0
+            assert 0<=reported_s<=1
             reports.append([T, point.id, self.id, reported_s, self.veracity, point.s])
         return reports
 
@@ -156,12 +159,11 @@ class Reporter:
         self.data_points.append(p)
 
 
-def create_random_map(n_points, size,hyper_prior, only_data_points=True):
+def create_random_map(n_points, size, only_data_points=True):
     '''
     Creates a random Map object
     :param n_points: how many data points should the map have
     :param size: a tuple (a,b) stating the size of the rectangle.
-    :param hyper_prior: the default prior distribution every datapoint will have
     :param only_data_points: If true, all points are data-points (can be reported), else some of them can be obstacles
     :return: A map n-points and bounds fitting the size
     '''
@@ -174,8 +176,9 @@ def create_random_map(n_points, size,hyper_prior, only_data_points=True):
         x_cor = round(random.uniform(0, size[1]), 2)
 
         if only_data_points:
-            new_point = DataPoint(x_cor, y_cor, f"p{cur_id}", hyper_prior)
+            new_point = DataPoint(x_cor, y_cor, f"p{cur_id}")
             points.append(new_point)
+
         # add other points when the model supports it
         cur_id += 1
     res_map = Map((0, size[1]), (0, size[0]), points)

@@ -127,5 +127,3 @@ def get_range_from_dist(dist_type: scipy.stats._continuous_distns, dist_params: 
     return tuple(np.percentile(dist_type.rvs(*dist_params, 1000), percentiles))
 
 
-# %%
-from matplotlib import pyplot as plt

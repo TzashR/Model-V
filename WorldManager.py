@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import gamma
 
 import World_Objects
-from Generic_Calcs import fit_average_posterior, plot_dist,get_range_from_dist
+from Generic_Calcs import fit_average_posterior, plot_dist, get_range_from_dist
 
 
 class WorldManager:
@@ -116,16 +116,16 @@ class WorldManager:
             posterior = (posterior[0], 0.98, posterior[2])
         return posterior
 
-    def predict_point_neighbors(self, point_id, k =1000, show_as_range = False):
+    def predict_point_neighbors(self, point_id, k=1000, show_as_range=False):
         '''
-        Predicts a point's distribution based on
+        Predicts a point's distribution based on its neighbors
         :param show_as_range: return the result as a range of values
         :param point_id:
         :param k:
         :return:
         '''
         target = self.points_dic[point_id]
-        neighbors = self.map.neighbors[point_id]+[target] # point is neighbor to itself
+        neighbors = self.map.neighbors[point_id] + [target]  # point is neighbor to itself
 
         weights = np.array(
             [self.weight_func(target.calc_distance(p), (self.T - self.last_report_times[p.id])) for p in neighbors])
@@ -135,7 +135,7 @@ class WorldManager:
         new_dist = self.dist_type.fit(weighted_predictions)
 
         if show_as_range:
-            return get_range_from_dist(self.dist_type,*new_dist)
+            return get_range_from_dist(self.dist_type, new_dist)
 
         return new_dist
 
@@ -201,7 +201,6 @@ class WorldManager:
             point.update_s(new_s, intervention=True)
         self.update_history()
 
-
     def random_positive_intervention(self, ratio=0.1, effect_dist=lambda: random.gauss(0.6, 0.3)):
         '''applies intervention to random points in the map. Can be used when starting the map for example'''
         n = int(len(self.map.data_points) * ratio)
@@ -230,8 +229,8 @@ class WorldManager:
         fig, ax = plt.subplots()
         ax.scatter(x_cors, y_cors, c=values, cmap='Reds', s=350)
         for point in self.map.data_points:
-            txt = f'{point.id} s={round(point.s,2)}' if with_values else point.id
-            ax.annotate(txt,(point.x,point.y))
+            txt = f'{point.id} s={round(point.s, 2)}' if with_values else point.id
+            ax.annotate(txt, (point.x, point.y))
         return plt
 
     def show_real(self, with_values=False):
@@ -242,3 +241,18 @@ class WorldManager:
         dist_params = self.priors[point_id]
         dist_type = self.dist_type
         plot_dist(dist_type, dist_params)
+
+    def extract_data_for_train(self, n_days: int, points_per_day = 4):
+        '''
+        :return:
+        '''
+        data = []
+        for i in range(n_days):
+            points_to_target = random.sample(self.map.data_points,points_per_day)
+            for point in points_to_target:
+                y = point.s
+                neighbors = self.map.neighbors[point.id] + [point]  # point is neighbor to itself
+                X = tuple([(self.priors[neighbor.id], neighbor.calc_distance(point),
+                            self.T - self.last_report_times[neighbor.id]) for neighbor in neighbors])
+                data.append((X,y))
+        return data

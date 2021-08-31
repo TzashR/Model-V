@@ -1,13 +1,13 @@
 import numpy as np
 import scipy
 from scipy.stats import gamma
-from scipy.optimize import  minimize
+
 from Generic_Calcs import calculate_point_discrete, make_kernel
 from WorldManager import WorldManager
 from World_Objects import create_random_map, generate_random_reporters
 
 
-def prediction_loss(dist_type: scipy.stats._continuous_distns, dist_params: tuple, true_value, k=100):
+def prediction_loss(dist_type: scipy.stats._continuous_distns, dist_params: tuple, true_value, k=1000):
     '''
     Calculates a loss of a distribution relating a specific value.
     :param dist_type:
@@ -20,7 +20,7 @@ def prediction_loss(dist_type: scipy.stats._continuous_distns, dist_params: tupl
     samples = dist.rvs(size=k)
     probs = dist.pdf(samples)
     loss = sum(probs * (np.square(samples - true_value)))
-    return loss
+    return loss * (10 ** -3) #too avoid infinite values
 
 
 def create_training_set(n_worlds: int, hyper_prior_params: tuple):
@@ -54,12 +54,17 @@ def train_predict(X, weight_func, k=128):
     weights_sum = sum(weights)
     neighbor_predictions = np.column_stack([gamma.rvs(*x[0], size=k) for x in X])
     weighted_predictions = (neighbor_predictions @ weights) / weights_sum
-    new_dist = gamma.fit(weighted_predictions)
+    try:
+        new_dist = gamma.fit(weighted_predictions)
+    except RuntimeError:
+        print('woah')
     return new_dist
 
-def get_row_loss(row,weight_func):
-    predicted_dist = train_predict(row[0],weight_func)
-    return prediction_loss(gamma,predicted_dist,row[1])
+
+def get_row_loss(row, weight_func):
+    predicted_dist = train_predict(row[0], weight_func)
+    return prediction_loss(gamma, predicted_dist, row[1])
+
 
 def get_dataset_loss(x, dataset):
     '''
@@ -68,14 +73,40 @@ def get_dataset_loss(x, dataset):
     :param dataset:
     :return:
     '''
-    weight_func = make_kernel(x[0],x[1])
+    assert x[0] > 0 and x[1] > 0
+    weight_func = make_kernel(x[0], x[1])
     n = len(dataset)
     loss = 0
     for row in dataset:
-        loss+=get_row_loss(row,weight_func)/n
+        loss += get_row_loss(row, weight_func) / n
     return loss
 
 
+def brute_force_optim(possible_dist_decay, possible_time_decay, dataset):
+    combinations = [(x, y) for y in possible_dist_decay for x in possible_time_decay]
+    best_loss = float('inf')
+    best_c = None
+    for c in combinations:
+        try:
+            loss = get_dataset_loss(c,dataset)
+        except:
+            continue
+        if loss<best_loss:
+            best_loss = loss
+            best_c = c
+    return best_c,best_loss
+
+
+
+# %%
+dataset = create_training_set(32, (0.5, 0, 1 / 18))
 #%%
-dataset = create_training_set(1,(0.5, 0, 1 / 18))
-optim = minimize(get_dataset_loss,np.array((0.005,0.4)),args = dataset)
+possible_dist_decay = list(np.linspace(0.0001,1,10))
+possible_time_decay = list(np.linspace(0.00001,5,10))
+
+#%%
+res = brute_force_optim(possible_dist_decay,possible_time_decay,dataset)
+# %%
+# bounds = Bounds((0.0001,0.0001),(3,3))
+# optim = minimize(get_dataset_loss,np.array((0.005,1)),bounds = bounds, args = dataset)
+# print(optim)

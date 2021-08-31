@@ -78,8 +78,12 @@ def make_kernel(alpha, beta, time_limit=5):
         '''
         assert time_diff >= 0
         if time_diff >= time_limit: return 0
-        return math.exp(-time_decay * time_diff - dist_decay * distance)
-
+        try:
+            weight = math.exp(-time_decay * time_diff - dist_decay * distance)
+        except OverflowError:
+            print('woosh')
+            print(weight)
+        return weight
     return calc_weight
 
 

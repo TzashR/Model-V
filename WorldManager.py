@@ -18,7 +18,7 @@ class WorldManager:
     def __init__(self, map: World_Objects.Map, reporters: [World_Objects.Reporter], point_calc_func, weight_func,
                  dist_type: scipy.stats.rv_continuous, prior_params: tuple, priors={}, dist_radius='inf',
                  time_range=5,
-                 neighbors_limit=8, prior_decay=0.1):
+                 neighbors_limit=8, prior_decay=0.1, clean_area_chance = 0.1):
         '''
         :param map: a Map object of the world
         :param reporters: list of Reporter objects that  provide the reports
@@ -42,6 +42,9 @@ class WorldManager:
         self.prior_decay = prior_decay
         self.points_dic = {}
         self.weight_func = weight_func
+
+        assert 0<=clean_area_chance<=1
+        self.clean_area_chance = clean_area_chance
 
         # assign prior params to any point we know nothing about
         self.priors = priors
@@ -74,9 +77,14 @@ class WorldManager:
             self.T += 1
             self.apply_calculations()
             self.update_history()
+
+            for area in self.map.areas:
+                should_clean = random.uniform(0,1) <= self.clean_area_chance
+                if should_clean: self.clean_area(area)
+
             self.generate_reports()
             self.apply_today_reports()
-            # self.decay_unreported_points() #until I implement random decay there is no point in that
+            self.decay_unreported_points()
 
             if with_show:
                 self.get_plot(with_show_values).draw()
@@ -206,6 +214,17 @@ class WorldManager:
         n = int(len(self.map.data_points) * ratio)
         points = random.sample(self.map.data_points, n)
         self.intervention(effect_dist, points)
+
+    def clean_area(self,area_id:str):
+        '''
+        Returns all of the area's points to their initial s stage (samples from hyper_prior
+        :param area_id:
+        :return:
+        '''
+        points = self.map.areas[area_id][0]
+        for point in points:
+            point.update_s(self.dist_type(self.hyper_prior).rvs(),intervention=True)
+            self.priors[point.id] = self.hyper_prior
 
     def save_state(self, output_path):
         '''

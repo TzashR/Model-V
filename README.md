@@ -1,6 +1,7 @@
 # Model-V
 Learns and predicts values of data points in space by their neighbors, when their neighbors aren't always reliable
-Files I'm actually working on are
+Files I'm actually working on are:
+
   World_Objects - defining the classes for objects in the simulation: DataPoints, Map and Reporter
   
   WorldManager - defining the class of the Simulator Manager

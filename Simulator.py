@@ -42,4 +42,4 @@ def dist_loop(days):
 king.intervention(dist_type(*hyper_prior_params).rvs, king.map.data_points)
 king.random_positive_intervention(ratio=0.3)
 # %%
-king.tick(4)
+king.tick(10, True)

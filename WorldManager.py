@@ -74,6 +74,7 @@ class WorldManager:
             plt.ion()
 
         for i in range(days):
+            #True calculations
             self.T += 1
             self.apply_calculations()
             self.update_history()
@@ -117,12 +118,20 @@ class WorldManager:
 
         loc = 0.99 if s == 1 else s  # to avoid values above 1
         report_dist_params = (1, loc, 0.0001)
+        #TODO I can add here the calculations withe the neighbors
         posterior = fit_average_posterior(self.priors[target_id], report_dist_params, self.dist_type, gamma,
                                           weights=((1 - v), v),
                                           result_dist_type=self.dist_type, n_samples=n_samples)
         if posterior[1] >= 1:
             posterior = (posterior[0], 0.98, posterior[2])
         return posterior
+
+    def calculate_posterios(self):
+        self.generate_reports()
+        self.apply_today_reports()
+        self.decay_unreported_points()
+
+        #TODO how much weight should we give neighbors when a point got reported, say yesterday?
 
     def predict_point_neighbors(self, point_id, k=1000, show_as_range=False):
         '''
@@ -223,8 +232,7 @@ class WorldManager:
         '''
         points = self.map.areas[area_id][0]
         for point in points:
-            point.update_s(self.dist_type(self.hyper_prior).rvs(),intervention=True)
-            self.priors[point.id] = self.hyper_prior
+            point.update_s(self.dist_type(*self.hyper_prior).rvs(),intervention=True)
 
     def save_state(self, output_path):
         '''

@@ -20,7 +20,7 @@ def prediction_loss(dist_type: scipy.stats._continuous_distns, dist_params: tupl
     samples = dist.rvs(size=k)
     probs = dist.pdf(samples)
     loss = sum(probs * (np.square(samples - true_value)))
-    return loss * (10 ** -3) #too avoid infinite values
+    return loss * (10 ** -3) #to avoid infinite values
 
 
 def create_training_set(n_worlds: int, hyper_prior_params: tuple):

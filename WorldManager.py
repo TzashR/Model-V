@@ -16,9 +16,10 @@ from Generic_Calcs import fit_average_posterior, plot_dist, get_range_from_dist
 
 class WorldManager:
     def __init__(self, map: World_Objects.Map, reporters: [World_Objects.Reporter], point_calc_func, weight_func,
-                 dist_type: scipy.stats.rv_continuous, prior_params: tuple, priors={}, dist_radius='inf',
+                 dist_type: scipy.stats.rv_continuous, prior_params: tuple, prior_decay_func, loss_func, priors={},
+                 dist_radius='inf',
                  time_range=5,
-                 neighbors_limit=8, prior_decay=0.1, clean_area_chance = 0.1):
+                 neighbors_limit=8, clean_area_chance=0.1, prior_decay_factor=1):
         '''
         :param map: a Map object of the world
         :param reporters: list of Reporter objects that  provide the reports
@@ -28,8 +29,10 @@ class WorldManager:
         :param dist_radius: radius used to calculate Datapoint's neighbors
         :param time_range: time range used to calculate Datapoint's neighbors
         :param neighbors_limit: Max amount of neighbors a Datapoint can have
-        :param prior_decay: How much a point's prior will revert back to hyper-prior every day if no report
+        :param prior_decay_factor: How much a point's prior will revert back to hyper-prior every day if no report
+        :param prior_decay_func: Function that takes paramters of a distribution and returns a new distribution with less veracity (e.g. makes SD larger)
         '''
+        self.loss_func = loss_func
         self.map = map
         self.reporters = reporters
         self.point_calc = point_calc_func
@@ -38,12 +41,13 @@ class WorldManager:
         self.neighbors_limit = neighbors_limit
         self.T = 0  # Current time
         self.dist_type = dist_type
-        self.hyper_prior = prior_params
-        self.prior_decay = prior_decay
+        self.hyper_prior = prior_params  # in use for clean area only currently
+        self.prior_decay = prior_decay_factor  # not in use
         self.points_dic = {}
         self.weight_func = weight_func
+        self.prior_decay_func = prior_decay_func
 
-        assert 0<=clean_area_chance<=1
+        assert 0 <= clean_area_chance <= 1
         self.clean_area_chance = clean_area_chance
 
         # assign prior params to any point we know nothing about
@@ -74,24 +78,28 @@ class WorldManager:
             plt.ion()
 
         for i in range(days):
-            #True calculations
+            # True calculations
             self.T += 1
             self.apply_calculations()
             self.update_history()
 
+            self.apply_prior_decays()
+            # self.predict_by_neighbors() #it doesn't make sense to learn with this as I don't know the parameters before traning
+
+            # clean areas
             for area in self.map.areas:
-                should_clean = random.uniform(0,1) <= self.clean_area_chance
+                should_clean = random.uniform(0, 1) <= self.clean_area_chance
                 if should_clean: self.clean_area(area)
 
             self.generate_reports()
             self.apply_today_reports()
-            self.decay_unreported_points()
 
             if with_show:
                 self.get_plot(with_show_values).draw()
                 plt.title(f"T = {self.T}")
                 plt.clf()
                 sleep(0.6)
+                print(f' Current average loss = {self.current_average_loss()}')
 
     def apply_calculations(self):
         ''' Applies the infection calculation to every point'''
@@ -118,7 +126,6 @@ class WorldManager:
 
         loc = 0.99 if s == 1 else s  # to avoid values above 1
         report_dist_params = (1, loc, 0.0001)
-        #TODO I can add here the calculations withe the neighbors
         posterior = fit_average_posterior(self.priors[target_id], report_dist_params, self.dist_type, gamma,
                                           weights=((1 - v), v),
                                           result_dist_type=self.dist_type, n_samples=n_samples)
@@ -126,16 +133,10 @@ class WorldManager:
             posterior = (posterior[0], 0.98, posterior[2])
         return posterior
 
-    def calculate_posterios(self):
-        self.generate_reports()
-        self.apply_today_reports()
-        self.decay_unreported_points()
-
-        #TODO how much weight should we give neighbors when a point got reported, say yesterday?
-
-    def predict_point_neighbors(self, point_id, k=1000, show_as_range=False):
+    def predict_point_neighbors_reports(self, point_id, only_reports=False, k=1000, show_as_range=False):
         '''
-        Predicts a point's distribution based on its neighbors
+        Predicts a point's distribution based on its neighbors. Taking into account time decay because looking only at reports
+        :param only_reports: If true, uses only reported data to calculate. Otherwise uses current priors for all neighbors
         :param show_as_range: return the result as a range of values
         :param point_id:
         :param k:
@@ -144,8 +145,12 @@ class WorldManager:
         target = self.points_dic[point_id]
         neighbors = self.map.neighbors[point_id] + [target]  # point is neighbor to itself
 
-        weights = np.array(
-            [self.weight_func(target.calc_distance(p), (self.T - self.last_report_times[p.id])) for p in neighbors])
+        if only_reports:
+            weights = np.array(
+                [self.weight_func(target.calc_distance(p), (self.T - self.last_report_times[p.id])) for p in neighbors])
+        else:
+            weights = np.array(
+                [self.weight_func(target.calc_distance(p), 1) for p in neighbors])
         weights_sum = sum(weights)
         neighbor_predictions = np.column_stack([self.dist_type.rvs(*self.priors[p.id], size=k) for p in neighbors])
         weighted_predictions = (neighbor_predictions @ weights) / weights_sum
@@ -180,9 +185,14 @@ class WorldManager:
         self.priors[point_id] = posterior
         self.last_report_times[point_id] = T
 
-    def decay_unreported_points(self):
+    def apply_prior_decays(self):
+        for p in self.priors:
+            self.priors[p] = self.prior_decay_func(self.priors[p])
+
+    def decay_unreported_points_to_hp(self):
         '''
         For every points we didn't get a report, we make the points prior to look more like the hyper-prior
+        ***currently not in use
         '''
         t = self.T
 
@@ -224,15 +234,16 @@ class WorldManager:
         points = random.sample(self.map.data_points, n)
         self.intervention(effect_dist, points)
 
-    def clean_area(self,area_id:str):
+    def clean_area(self, area_id: str):
         '''
-        Returns all of the area's points to their initial s stage (samples from hyper_prior
+        Returns all of the area's points to their initial s stage (samples from hyper_prior)
         :param area_id:
         :return:
         '''
         points = self.map.areas[area_id][0]
         for point in points:
-            point.update_s(self.dist_type(*self.hyper_prior).rvs(),intervention=True)
+            point.update_s(self.dist_type(*self.hyper_prior).rvs(), intervention=True)
+            self.priors[point.id] = self.hyper_prior
 
     def save_state(self, output_path):
         '''
@@ -269,17 +280,44 @@ class WorldManager:
         dist_type = self.dist_type
         plot_dist(dist_type, dist_params)
 
-    def extract_data_for_train(self, n_days: int, points_per_day = 4):
+    def show_range(self, point_id: str, percentiles=(30, 70)):
+        dist_params = self.priors[point_id]
+        dist_type = self.dist_type
+        return get_range_from_dist(dist_type, dist_params, percentiles)
+
+    def extract_data_for_train(self, n_days: int, points_per_day=4, all_points=False):
         '''
         :return:
         '''
         data = []
         for i in range(n_days):
-            points_to_target = random.sample(self.map.data_points,points_per_day)
+            points_to_target = self.map.data_points if all_points else random.sample(self.map.data_points,
+                                                                                     points_per_day)
             for point in points_to_target:
                 y = point.s
                 neighbors = self.map.neighbors[point.id] + [point]  # point is neighbor to itself
                 X = tuple([(self.priors[neighbor.id], neighbor.calc_distance(point),
                             self.T - self.last_report_times[neighbor.id]) for neighbor in neighbors])
-                data.append((X,y))
+                data.append((X, y))
         return data
+
+    def point_loss(self, point_id: str) -> float:
+        '''
+        Returns current point loss in respect to its prior and real s
+        :param point_id:
+        :return:
+        '''
+        prior = self.priors[point_id]
+        s = self.points_dic[point_id].s
+        return self.loss_func(self.dist_type,prior,s)
+
+    def current_average_loss(self):
+        res = 0
+        n = len(self.map.data_points)
+        for point in self.map.data_points:
+            res += self.point_loss(point.id)/n
+        return res
+
+
+    def predict_by_neighbors(self):
+        pass

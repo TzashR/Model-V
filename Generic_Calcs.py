@@ -5,8 +5,10 @@ Functions used on data points. Useful when generating data,training the model an
 import math
 import random
 
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats._continuous_distns
+
 
 # True calculations - what the simulations uses, not what "we" know
 
@@ -34,8 +36,6 @@ def calculate_point_discrete(target, neighbors,
     return new_s
 
 
-
-
 def fit_average_posterior(dist1_params: tuple, dist2_params: tuple, dist1_type, dist2_type, weights, result_dist_type,
                           n_samples=10000):
     '''
@@ -56,7 +56,8 @@ def fit_average_posterior(dist1_params: tuple, dist2_params: tuple, dist1_type, 
     dist2_samples = dist2_type.rvs(*dist2_params, size=n_samples)
 
     weighted_samples = weights[0] * dist1_samples + weights[1] * dist2_samples
-    return result_dist_type.fit(weighted_samples)
+    res = result_dist_type.fit(weighted_samples)
+    return res
 
 
 def make_kernel(alpha, beta, time_limit=5):
@@ -84,6 +85,7 @@ def make_kernel(alpha, beta, time_limit=5):
             print('woosh')
             print(weight)
         return weight
+
     return calc_weight
 
 
@@ -131,3 +133,23 @@ def get_range_from_dist(dist_type: scipy.stats._continuous_distns, dist_params: 
     return tuple(np.percentile(dist_type.rvs(*dist_params, 1000), percentiles))
 
 
+def add_variance_to_gamma(dist_params: tuple, factor: float) -> tuple:
+    return dist_params[0] * factor, dist_params[1], dist_params[2] * (1 / factor)
+
+
+def prediction_loss(dist_type: scipy.stats._continuous_distns, dist_params: tuple, true_value, k=1000,
+                    epsilon_fix=0.01):
+    '''
+    Calculates a loss of a distribution relating a specific value.
+    :param dist_type:
+    :param dist_params:
+    :param true_value:
+    :param k:
+    :return:
+    '''
+    dist = dist_type(*dist_params)
+    samples = dist.rvs(size=k) + epsilon_fix  # Avoids infinite values.e.g. when sample == loc in gamma
+    probs = dist.pdf(samples)
+    loss = sum((1 / k) * probs * (np.square(samples - true_value)))
+    assert loss < float('inf')
+    return loss

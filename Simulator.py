@@ -1,7 +1,7 @@
 # %%
 from scipy.stats import gamma
 
-from Generic_Calcs import calculate_point_discrete, make_kernel
+from Generic_Calcs import calculate_point_discrete, make_kernel, add_variance_to_gamma,prediction_loss
 from WorldManager import WorldManager
 from World_Objects import create_random_map, generate_random_reporters
 
@@ -21,7 +21,8 @@ weight_func = make_kernel(dist_decay, time_decay, 5)
 
 # %%
 king = WorldManager(map=map, reporters=reps, point_calc_func=point_calc, dist_type=gamma,
-                    prior_params=hyper_prior_params, weight_func=weight_func)
+                    prior_params=hyper_prior_params, weight_func=weight_func, loss_func=prediction_loss,
+                    prior_decay_func=lambda prior: add_variance_to_gamma(prior, 0.95))
 from time import sleep
 
 
@@ -42,4 +43,4 @@ def dist_loop(days):
 king.intervention(dist_type(*hyper_prior_params).rvs, king.map.data_points)
 king.random_positive_intervention(ratio=0.3)
 # %%
-king.tick(10, True)
+king.tick(30, True)

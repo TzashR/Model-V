@@ -19,7 +19,7 @@ class WorldManager:
                  dist_type: scipy.stats.rv_continuous, prior_params: tuple, prior_decay_func, loss_func, priors={},
                  dist_radius='inf',
                  time_range=5,
-                 neighbors_limit=8, clean_area_chance=0.1, prior_decay_factor=1):
+                 neighbors_limit=8, clean_area_chance=0.1, prior_decay_factor=1, reports=None):
         '''
         :param map: a Map object of the world
         :param reporters: list of Reporter objects that  provide the reports
@@ -46,6 +46,8 @@ class WorldManager:
         self.points_dic = {}
         self.weight_func = weight_func
         self.prior_decay_func = prior_decay_func
+        self.clean_days = defaultdict(lambda: [])
+        self.prior_history = []
 
         assert 0 <= clean_area_chance <= 1
         self.clean_area_chance = clean_area_chance
@@ -62,7 +64,11 @@ class WorldManager:
         self.history = pd.DataFrame([], columns=[point.id for point in map.data_points])
 
         # reports history saves all the reports generated
-        self.reports = pd.DataFrame([], columns=['T', 'POINT_ID', 'REPORTER_ID', 'REPORTED_S', 'Veracity', 'TRUE_S'])
+        if reports is None:
+            self.reports = pd.DataFrame([],
+                                        columns=['T', 'POINT_ID', 'REPORTER_ID', 'REPORTED_S', 'Veracity', 'TRUE_S'])
+        else:
+            self.reports = reports
 
     def __repr__(self):
         return f"WorldManager T = {self.T}"
@@ -84,15 +90,23 @@ class WorldManager:
             self.update_history()
 
             self.apply_prior_decays()
-            # self.predict_by_neighbors() #it doesn't make sense to learn with this as I don't know the parameters before traning
+
+            # predict for all points:
+            new_priors = self.priors.copy()
+            for point in self.map.data_points:
+                new_priors[point.id] = self.predict_point_reports(point.id)
+            self.priors = new_priors
 
             # clean areas
             for area in self.map.areas:
                 should_clean = random.uniform(0, 1) <= self.clean_area_chance
-                if should_clean: self.clean_area(area)
+                if should_clean:
+                    self.clean_days[self.T].append(area)
+                    self.clean_area(area)
 
             self.generate_reports()
             self.apply_today_reports()
+            self.prior_history.append(self.priors)
 
             if with_show:
                 self.get_plot(with_show_values).draw()
@@ -133,7 +147,7 @@ class WorldManager:
             posterior = (posterior[0], 0.98, posterior[2])
         return posterior
 
-    def predict_point_neighbors_reports(self, point_id, only_reports=False, k=1000, show_as_range=False):
+    def predict_point_reports(self, point_id, only_reports=False, k=1000, show_as_range=False):
         '''
         Predicts a point's distribution based on its neighbors. Taking into account time decay because looking only at reports
         :param only_reports: If true, uses only reported data to calculate. Otherwise uses current priors for all neighbors
@@ -255,7 +269,7 @@ class WorldManager:
         self.reports.to_csv("reports.csv")
         self.history.to_csv("values history.csv")
 
-    def get_plot(self, with_values=False):
+    def get_plot(self, with_values=True):
         '''
         Plots current map state
         :param with_values: If true, annotates the value next to each point
@@ -278,14 +292,14 @@ class WorldManager:
     def show_dist(self, point_id: str):
         dist_params = self.priors[point_id]
         dist_type = self.dist_type
-        plot_dist(dist_type, dist_params)
+        plot_dist(dist_type, dist_params, annotate_value=self.points_dic[point_id].s)
 
     def show_range(self, point_id: str, percentiles=(30, 70)):
         dist_params = self.priors[point_id]
         dist_type = self.dist_type
         return get_range_from_dist(dist_type, dist_params, percentiles)
 
-    def extract_data_for_train(self, n_days: int, points_per_day=4, all_points=False):
+    def legacy_extract_data_for_train(self, n_days: int, points_per_day=4, all_points=False):  # not sure I use this
         '''
         :return:
         '''
@@ -309,15 +323,70 @@ class WorldManager:
         '''
         prior = self.priors[point_id]
         s = self.points_dic[point_id].s
-        return self.loss_func(self.dist_type,prior,s)
+        return self.loss_func(self.dist_type, prior, s)
 
     def current_average_loss(self):
         res = 0
         n = len(self.map.data_points)
         for point in self.map.data_points:
-            res += self.point_loss(point.id)/n
+            res += self.point_loss(point.id) / n
         return res
 
 
-    def predict_by_neighbors(self):
-        pass
+class WorldTester(WorldManager):
+    def __init__(self, source_reports, clean_days,start_day: int,priors_at_start_day, *params):
+        super().__init__(*params)
+        self.source_reports = source_reports
+        self.clean_days = clean_days
+        self.total_loss = 0
+        self.start_day = start_day
+        self.n_samples = len(source_reports['T'] > start_day)
+        self.priors = priors_at_start_day
+
+    def report_loss(self, row):
+        label = row['REPORTED_S']
+        v = row['Veracity']
+        point_id = row['POINT_ID']
+
+        loss = self.loss_func(self.dist_type, self.priors[point_id], label) * (v ** 2)
+        return loss
+
+    def day_loss(self):
+        '''
+        Calculates loss for all the reports given today in the tester and the original
+        :return:
+        '''
+        day = self.source_reports[self.source_reports['T'] == self.T][['POINT_ID', 'REPORTED_S', 'Veracity']]
+        day_loss = sum(self.report_loss(day))
+        return day_loss
+
+    def test_tick(self, ignore = False):
+        self.T += 1
+        self.apply_prior_decays()
+
+        # predict for all points:
+        new_priors = self.priors.copy()
+        for point in self.map.data_points:
+            new_priors[point.id] = self.predict_point_reports(point.id)
+        self.priors = new_priors
+
+        # clean areas
+        if self.T in self.clean_days:
+            for area in self.clean_days[self.T]:
+                self.clean_area(area)
+        self.generate_reports()
+        self.apply_today_reports()
+        if ignore: return
+        day_loss = self.day_loss()
+        self.total_loss+=day_loss
+
+    def calculate_world_loss(self):
+        n_days = max(self.source_reports['T'])
+        for i in range(self.ignore_days):
+            self.test_tick(ignore = True)
+        for i in range(n_days-self.ignore_days):
+            self.test_tick()
+        return self.total_loss/self.n_samples
+
+
+

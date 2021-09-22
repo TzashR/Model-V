@@ -68,7 +68,7 @@ class DataPoint(Point):
 class Map:
     '''Holds all the data points in the area (The area is rectangle)'''
 
-    def __init__(self, x_bounds: (int, int), y_bounds: (int, int), data_points, obstacles=[], area_size = (1000,1000)):
+    def __init__(self, x_bounds: (int, int), y_bounds: (int, int), data_points, obstacles=[], area_size=(1000, 1000)):
         '''
         :param x_bounds: a tuple (+float,+float) stating the bounds of the x coordinates
         :param y_bounds:  a tuple (+float,+float) stating the bounds of the y coordinates
@@ -85,7 +85,7 @@ class Map:
         self.neighbors = {}
 
         self.areas = {}
-        self.divide_to_areas((1000,1000))
+        self.divide_to_areas((1000, 1000))
 
     def __repr__(self):
         return f'Map bounds {self.x_bounds, self.y_bounds}\n' \
@@ -93,7 +93,6 @@ class Map:
                f'Number of obstcales {len(self.obstacles)}'
 
     def make_neighbors_list_geo(self, dist_radius=float('inf'), limit=8):
-        # TODO finish this
         '''
         Calculates the neighbors for each data_point based on distance only
         :param data_points: a list of FieldPoints
@@ -180,13 +179,18 @@ class Reporter:
             does_report = random.uniform(0, 1) < (
                     point.s + 0.15)  # chance to report goes up the more infected the point is
             if not does_report: continue
-            reported_s = random.gauss(point.s, (1 - self.veracity) / 3.5)  # This is not scientific
+            report_veracity = random.gauss(self.veracity, 0.15)
+            report_veracity = 1 if report_veracity > 1 else report_veracity
+            report_veracity = 0 if report_veracity < 0 else report_veracity
+            assert (0 <= report_veracity <= 1)
+
+            reported_s = random.gauss(point.s, (1 - report_veracity) / 3.5)  # This is not scientific
             if reported_s > 1:
                 reported_s = 1
             elif reported_s < 0:
                 reported_s = 0
             assert 0 <= reported_s <= 1
-            reports.append([T, point.id, self.id, reported_s, self.veracity, point.s])
+            reports.append([T, point.id, self.id, reported_s, report_veracity, point.s])
         return reports
 
     def add_DataPoint(self, p):

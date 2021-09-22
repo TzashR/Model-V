@@ -104,7 +104,7 @@ def calc_adj_mat(points):
     return res_mat
 
 
-def plot_dist(dist_type: scipy.stats._continuous_distns, dist_params: tuple):
+def plot_dist(dist_type: scipy.stats._continuous_distns, dist_params: tuple, annotate_value = None):
     '''
     Plots a graph of the distribution
     :param dist_type: distribution type with rvs function
@@ -118,6 +118,8 @@ def plot_dist(dist_type: scipy.stats._continuous_distns, dist_params: tuple):
 
     y = dist.pdf(x)
     plt.plot(x, y)
+    if annotate_value is not None:
+        plt.scatter([annotate_value],[0], color = 'red')
     plt.title(
         f'a = {round(a, 2)}, scale = {round(scale, 2)}, loc = {round(loc, 2)}, mean = {round(a * scale, 2)}, SD = {round(a * (scale ** 2), 2)}')
     plt.show()
@@ -148,7 +150,10 @@ def prediction_loss(dist_type: scipy.stats._continuous_distns, dist_params: tupl
     :return:
     '''
     dist = dist_type(*dist_params)
-    samples = dist.rvs(size=k) + epsilon_fix  # Avoids infinite values.e.g. when sample == loc in gamma
+    fixed_number = dist_params[1]+epsilon_fix
+    samples = dist.rvs(size=k)
+    samples[samples < fixed_number] = fixed_number
+    true_value = max(fixed_number,true_value)
     probs = dist.pdf(samples)
     loss = sum((1 / k) * probs * (np.square(samples - true_value)))
     assert loss < float('inf')

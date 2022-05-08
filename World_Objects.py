@@ -64,6 +64,22 @@ class DataPoint(Point):
         assert 0 <= reported_s <= 1 and 0 <= veracity <= 1
         self.last_report = (reported_s, veracity)
 
+class PredictionUnit:
+    '''
+    A set of dataPoints for which we are interested in a shared prediction
+    '''
+
+    def __init__(self, data_points, agg_func, unit_id: str):
+        '''
+        :param data_points: List of data points
+        :param agg_func: function that takes a list of data points and returns a shared prediction
+        '''
+        self.data_points = data_points
+        self.agg_func = agg_func
+        self.id = unit_id
+
+    def predict(self):
+        return self.aggregation_func(self.datapoints)
 
 class Map:
     '''Holds all the data points in the area (The area is rectangle)'''

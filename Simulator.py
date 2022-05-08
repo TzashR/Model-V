@@ -1,44 +1,39 @@
 # %%
-from scipy.stats import gamma
+from scipy.stats import gamma, norm
 
-from Generic_Calcs import calculate_point_discrete, make_kernel, add_variance_to_gamma, prediction_loss
+from Generic_Calcs import calculate_point_discrete, make_kernel, add_variance_to_gamma,add_variance_to_norm, prediction_loss, prediction_unit_func_normal
 from WorldManager import WorldManager, WorldTester
 from World_Objects import create_random_map, generate_random_reporters
+from time import sleep
 
-hyper_prior_params = (0.5, 0, 1 / 18)
+hyper_prior_params = (-5,1)
 
-map1 = create_random_map(20, (2000, 2000), hyper_prior_params)
-map2 = create_random_map(20, (2000, 2000), hyper_prior_params)
+map = create_random_map(20, (2000, 2000), hyper_prior_params)
 
-map1.make_neighbors_list_geo()
-map2.make_neighbors_list_geo()
+map.make_neighbors_list_geo()
 
 # reps = generate_random_reporters(1, map.data_points, lambda: 1) #veracity 1
-reps1 = generate_random_reporters(5, map1.data_points)  # random veracity
-reps2 = generate_random_reporters(5, map2.data_points)  # random veracity
+reps = generate_random_reporters(5, map.data_points)  # random veracity
 
 point_calc = calculate_point_discrete
-dist_type = gamma
+dist_type = norm
 
-# %%
+ # %%
 dist_decay = 0.005
 time_decay = 0.4
-weight_func1 = make_kernel(dist_decay, time_decay, 5)
-weight_func2 = make_kernel(0.004, 0.3, 5)
+weight_func = make_kernel(dist_decay, time_decay, 5)
 
-king1_params = {'map': map1, 'reporters': reps1, 'point_calc_func': point_calc, 'dist_type': gamma,
+king_params = {'map': map, 'reporters': reps, 'point_calc_func': point_calc, 'dist_type': dist_type,
                 'prior_params': hyper_prior_params,
                  'loss_func': prediction_loss,
-                'prior_decay_func': lambda prior: add_variance_to_gamma(prior, 0.95)}
+                'prior_decay_func': lambda prior: add_variance_to_norm(prior, 1.1), 'prediction_unit_func' : prediction_unit_func_normal}
 
 # %%
-king1 = WorldManager(**king1_params,loss_func=weight_func1)
+king = WorldManager(**king_params,weight_func=weight_func)
 
-king2 = WorldManager(map=map2, reporters=reps2, point_calc_func=point_calc, dist_type=gamma,
-                     prior_params=hyper_prior_params, weight_func=weight_func2, loss_func=prediction_loss,
-                     prior_decay_func=lambda prior: add_variance_to_gamma(prior, 0.95))
+for point in map.data_points:
+    king.add_prediction_unit([point],point.id)
 
-from time import sleep
 
 
 # %%
@@ -49,18 +44,16 @@ def dist_tick(world, point_id):
 
 def dist_loop(days, world, point_id):
     for i in range(days):
-        print(f"day {i}, true s = {world.points_dic[point_id].s}")
+        print(f"day {i}, true s = {world.points_dic[point_id].s}, point loss = {world.point_loss(point_id)}")
         dist_tick(world, point_id)
         sleep(1.5)
 
 
 # %%
-king1.intervention(dist_type(*hyper_prior_params).rvs, king1.map.data_points)
-king1.random_positive_intervention(ratio=0.3)
-king2.intervention(dist_type(*hyper_prior_params).rvs, king2.map.data_points)
-king2.random_positive_intervention(ratio=0.3)
+# king2.intervention(dist_type(*hyper_prior_params).rvs, king2.map.data_points)
+king.random_positive_intervention(ratio=0.3)
 
 # %%
-king1.tick(15, True)
+king.tick(15, True)
 
 

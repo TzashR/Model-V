@@ -98,7 +98,6 @@ def brute_force_optim_world(possible_dist_decay, possible_time_decay, n_worlds):
     map = create_random_map(20, (2000, 2000), hyper_prior_params)
     map.make_neighbors_list_geo()
     reps = generate_random_reporters(5, map.data_points)  # random veracity
-    weight_func = lambda: 0  # this is irrelevant as we aren't going to predict anything.
     point_calc = calculate_point_discrete
     best_c = None
     best_score = float('inf')
@@ -107,6 +106,7 @@ def brute_force_optim_world(possible_dist_decay, possible_time_decay, n_worlds):
         c_score = 0
         for i in range(n_worlds):
             world_score = 0
+            weight_func = make_kernel(*c)
             world = WorldManager(map=map, reporters=reps, point_calc_func=point_calc, dist_type=gamma,
                                  prior_params=hyper_prior_params, weight_func=weight_func, loss_func=prediction_loss,
                                  prior_decay_func=lambda prior: add_variance_to_gamma(prior, 0.95))
@@ -144,14 +144,14 @@ def brute_force_optim(possible_dist_decay, possible_time_decay, dataset):
 
 
 # %%
-dataset = legacy_create_training_set(1, 400, (0.5, 0, 1 / 18))
+# dataset = legacy_create_training_set(1, 400, (0.5, 0, 1 / 18))
 # %%
 possible_dist_decay = list(np.linspace(0.0001, 1, 5))
 possible_time_decay = list(np.linspace(0.00001, 5, 5))
 
 # %%
 brute_force_optim_world(possible_dist_decay, possible_time_decay, 2)
-# %%
+ # %%
 res = brute_force_optim(possible_dist_decay, possible_time_decay, dataset)
 # %%
 # bounds = Bounds((0.0001,0.0001),(3,3))

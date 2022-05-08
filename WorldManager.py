@@ -16,10 +16,10 @@ from Generic_Calcs import fit_average_posterior, plot_dist, get_range_from_dist
 
 class WorldManager:
     def __init__(self, map: World_Objects.Map, reporters: [World_Objects.Reporter], point_calc_func, weight_func,
-                 dist_type: scipy.stats.rv_continuous, prior_params: tuple, prior_decay_func, loss_func, priors={},
+                 dist_type: scipy.stats.rv_continuous, prior_params: tuple, prior_decay_func, loss_func,prediction_unit_func, priors={},
                  dist_radius='inf',
                  time_range=5,
-                 neighbors_limit=8, clean_area_chance=0.1, prior_decay_factor=1, reports=None):
+                 neighbors_limit=8, clean_area_chance=0.1, prior_decay_factor=1, reports=None,prediction_units:dict = {}):
         '''
         :param map: a Map object of the world
         :param reporters: list of Reporter objects that  provide the reports
@@ -34,6 +34,7 @@ class WorldManager:
         '''
         self.loss_func = loss_func
         self.map = map
+        self.prediction_units = prediction_units
         self.reporters = reporters
         self.point_calc = point_calc_func
         self.dist_radius = dist_radius
@@ -48,6 +49,7 @@ class WorldManager:
         self.prior_decay_func = prior_decay_func
         self.clean_days = defaultdict(lambda: [])
         self.prior_history = []
+        self.prediction_unit_func = prediction_unit_func
 
         assert 0 <= clean_area_chance <= 1
         self.clean_area_chance = clean_area_chance
@@ -331,6 +333,20 @@ class WorldManager:
         for point in self.map.data_points:
             res += self.point_loss(point.id) / n
         return res
+
+    def add_prediction_unit(self,data_points,unit_id,unit_func = None):
+        if unit_func is None:
+            unit_func = self.prediction_unit_func
+        new_unit = World_Objects.PredictionUnit(data_points,unit_func,unit_id)
+        self.prediction_units[unit_id] = new_unit
+
+    def get_prediction_for_PD(self,unit_id):
+        unit = self.prediction_units[unit_id]
+        data_points = unit.data_points
+        func = unit.agg_func
+        params = [self.priors[point.id] for point in data_points]
+        return func(params)
+
 
 
 class WorldTester(WorldManager):

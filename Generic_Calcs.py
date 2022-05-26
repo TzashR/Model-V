@@ -308,5 +308,5 @@ def generate_none_spatial_data(n_features, n_samples,min_obs_village = 1, max_ob
             'obs_test': obs_test, 'test_villages': test_villages, "train_villages": train_villages,
             "villages": villages,'weights':weights}
 
-def predict_variances(X,alphas):
-    return  np.sqrt(np.exp(X@alphas))
+def predict_variances(X,alphas, bias = 0):
+    return  np.sqrt(np.exp(X@alphas+bias))

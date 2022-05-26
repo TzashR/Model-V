@@ -3,6 +3,7 @@ This is a notebook that analyses the water datasets
 '''
 import pandas as pd
 from statsmodels.stats.weightstats import ztest as ztest
+from matplotlib import pyplot as plt
 
 # %% recreate lishtot df
 with open("Water/swahili.xlsx", 'rb') as f:
@@ -60,3 +61,39 @@ alks_order = alks.replace(values_dic)
 
 alks_order['diff'] = abs(alks_order["total_alkalinity_x"] - alks_order['total_alkalinity_y'])
 #need to check if h0 holds for this 'diff' column
+
+
+# %% means of tests comparison
+x = list(range(len(lishtot)))
+
+y_eng = lishtot["Is mean"]
+y_af = lishtot["Af mean"]
+
+plt.scatter(x, y_eng)
+plt.scatter(x, y_af)
+
+plt.show()
+
+# %% diffs of tests comparison
+plt.title("Difference Israeli mean and Local mean")
+plt.xlabel("Israeli mean - Local mean")
+plt.ylabel("n instances")
+plt.hist(lishtot['diff'], bins=50)
+plt.show()
+
+# %% sd of israeli measurements
+plt.title("STD of Israeli measurements")
+plt.xlabel("Israeli STD")
+plt.ylabel("n instances")
+plt.hist(lishtot['Is STD'], bins=50)
+plt.annotate("All instances of SD = 0 are either measurements of 5 0s or 5 100s", (0.1, 33))
+
+plt.show()
+
+# %% sd of local measurements
+plt.title("STD of local measurements")
+plt.xlabel("local STD")
+plt.ylabel("n instances")
+plt.hist(lishtot['Af STD'], bins=50)
+plt.annotate("All instances of SD = 0 are either measurements of 5 0s or 5 100s", (0.1, 33))
+plt.show()

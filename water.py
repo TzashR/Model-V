@@ -123,55 +123,13 @@ def loss_per_agg_level(data_df, obs_df, agg_size: int, measured_val: str, train_
                  method='Nelder-Mead')['x']
 
     bias = np.array([0])
-    bias = minimize(loss_model, bias, (X_train, train_villages, af_obs_train, is_obs_train, alphas, True))['x']
+    bias = minimize(water_model_loss, bias, (X_train, train_villages, af_obs_train, is_obs_train, alphas, True))['x']
 
-    train_losses = loss_model(bias, X_train, train_villages, af_obs_train, is_obs_train, alphas)
-    test_losses = loss_model(bias, X_test, test_villages, af_obs_test, is_obs_test, alphas)
+    train_losses = water_model_loss(bias, X_train, train_villages, af_obs_train, is_obs_train, alphas)
+    test_losses = water_model_loss(bias, X_test, test_villages, af_obs_test, is_obs_test, alphas)
 
     return {"train_losses": train_losses, "test_losses": test_losses, 'bias': bias, 'fi': alphas}
 
-
-def loss_model(bias, X, villages_division, obs, is_obs, alphas, for_optim=False):
-    model_loss_reg = 0
-    naive_loss_reg = 0
-    model_loss_root = 0
-    naive_loss_root = 0
-
-    villages_unique = np.unique(villages_division)
-    variances = predict_variances(X, alphas, bias)
-
-    res_dic = {}
-
-    for v in villages_unique:
-        indices = (villages_division == v)
-        variances_v = variances[indices]
-
-        # print(f" indices = {indices},v = {v}")
-        obs_v = obs[indices]
-        is_obs_v = is_obs[indices]
-        true_av = is_obs_v.mean()
-
-        # model_weights = np.reciprocal(variances_v) + bias
-        model_weights = np.reciprocal(variances_v)
-        model_av = np.dot(model_weights, obs_v) / sum(model_weights)
-        model_loss_reg += (model_av - true_av) ** 2
-        model_loss_root += model_loss_reg * np.sqrt(sum(indices))
-
-        naive_av = obs_v.mean()
-        naive_loss_reg += (naive_av - true_av) ** 2
-        naive_loss_root += naive_loss_reg * np.sqrt(sum(indices))
-
-    naive_loss_reg /= len(villages_unique)
-    model_loss_reg /= len(villages_unique)
-    model_loss_root /= sum(np.sqrt(villages_division.value_counts()))
-    naive_loss_root /= sum(np.sqrt(villages_division.value_counts()))
-
-    res_dic['reg'] = (naive_loss_reg, model_loss_reg)
-    res_dic['root'] = (naive_loss_root, model_loss_root)
-
-    if for_optim:
-        return model_loss_reg
-    return res_dic
 
 
 # %% recreate lishtot df
@@ -275,10 +233,10 @@ alphas = \
              method='Nelder-Mead')['x']
 
 bias = np.array([0])
-bias = minimize(loss_model, bias, (X_train, train_villages, af_obs_train, is_obs_train, alphas, True))['x']
+bias = minimize(water_model_loss, bias, (X_train, train_villages, af_obs_train, is_obs_train, alphas, True))['x']
 
-train_losses = loss_model(bias, X_train, train_villages, af_obs_train, is_obs_train, alphas)
-test_losses = loss_model(bias, X_test, test_villages, af_obs_test, is_obs_test, alphas)
+train_losses = water_model_loss(bias, X_train, train_villages, af_obs_train, is_obs_train, alphas)
+test_losses = water_model_loss(bias, X_test, test_villages, af_obs_test, is_obs_test, alphas)
 
 print(
     f"Train: naive loss = {train_losses['reg'][0]}, model loss = {train_losses['reg'][1]} \n root naive =  {train_losses['root'][0]}, root model =  {train_losses['root'][1]} ")

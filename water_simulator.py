@@ -2,53 +2,62 @@
 import numpy as np
 from scipy.optimize import minimize
 
-from Generic_Calcs import likelihood_alphas, generate_none_spatial_data, water_model_loss
+from Generic_Calcs import likelihood_alphas, generate_none_spatial_data, water_model_loss,simulation_loss_per_agg_level
 
+
+
+#%% experiment : same data set, different aggregations
+repeats_per_agg = 3
+n_samples = 5000
+n_features = 1
+ds = generate_none_spatial_data(n_features, n_samples, min_obs_village=10, max_obs_village=10, feature_weights=np.array([1]),
+                               split_train_test=False,
+                               train_test_ratio=0.3, max_sigma=100)['df']
+betas_av = []
+betas_std = []
+variance_loss_av_train = []
+variance_loss_av_test = []
+variance_loss_std_train = []
+variance_loss_std_test= []
+model_loss_av_train = []
+model_loss_av_test = []
+model_loss_std_train = []
+model_loss_std_test = []
+naiv_loss_av = []
+max_agg = 10
+step = 2
+agg_lvls = list(range(1,max_agg,step))
+for agg in agg_lvls:
+    print(f"agg {agg} out of {max_agg}")
+    agg_betas = []
+    agg_variance_loss_test = []
+    agg_variance_loss_train = []
+    agg_model_loss_test = []
+    agg_model_loss_train = []
+    agg_naive_loss_train = []
+    agg_naive_loss_test = []
+    for i in range(repeats_per_agg):
+        r = simulation_loss_per_agg_level(ds,agg)
+        agg_betas.append(r['beta'])
+        agg_variance_loss_test.append(r['variance_loss_test'])
+        agg_variance_loss_train.append(r['variance_loss_train'])
+        agg_model_loss_train.append(r['train_losses'][1])
+        agg_naive_loss_train.append(r['train_losses'][0])
+        agg_naive_loss_test.append(r['test_losses'][0])
+        agg_model_loss_test.append(r['test_losses'][1])
+
+    betas_av.append(np.mean(agg_betas))
+    betas_std.append(np.std(agg_betas))
+    variance_loss_av_train.append(np.mean(agg_variance_loss_train))
+    variance_loss_av_test.append(np.mean(agg_variance_loss_test))
+    variance_loss_std_train.append(np.std(agg_variance_loss_train))
+    variance_loss_std_test.append(np.std(agg_variance_loss_test))
+    model_loss_av_train.append(np.mean(agg_model_loss_train))
+    model_loss_av_test.append(np.mean(agg_model_loss_test))
+    model_loss_std_train.append(np.std(agg_model_loss_train))
+    model_loss_std_test.append(np.std(agg_model_loss_test))
 
 # %%
-def experiment(n_features,n_samples,max_obs_village,min_obs_village,repeats_per_lvl, agg_lvls):
-    biases_av = []
-    biases_std = []
-    model_losses_av = []
-    model_losses_std = []
-    naive_losses = []
-
-    data = generate_none_spatial_data(n_features, n_samples, min_obs_village=min_obs_village,
-                                      max_obs_village=max_obs_village,
-                                      split_train_test=True, max_sigma=100, train_test_ratio=0.3)
-
-    for agg in agg_lvls:
-        for i in range(repeats_per_lvl):
-        # train_distances = np.square(data['is_train'] - data['obs_train'])
-
-
-        alphas_0 = np.zeros(n_features)  # for our training
-        # train by our model (max likelihood)
-        alphas = minimize(likelihood_alphas, alphas_0, (data['f_train'], data['obs_train'], data['is_train'], True),
-                          method='Nelder-Mead')['x']
-
-        bias_0 = np.array([0])
-        bias = minimize(loss_model, bias_0, (data['f_train'], data['train_villages'], data['obs_train'], data['is_train'], alphas),
-                 method='Nelder-Mead')['x']
-        biases.append(bias[0])
-
-        loss = get_ds_loss(data['f_test'], data['test_villages'], alphas, data['obs_test'], data['is_test'])
-        alt_loss =  get_ds_loss(data['f_test'], data['test_villages'], alphas, data['obs_test'], data['is_test'], bias = bias)
-
-        # predicted_variances = np.exp(data['f_train'] @ alphas)
-        # true_variances = data['variances_train']
-
-        # print(f"loss bias = 0 : {loss}")
-        # print(f"loss bias = {bias} : {alt_loss}")
-
-        av_no_b_loss += loss[0]/n_tests
-        av_model_loss += alt_loss[0]/n_tests
-        av_naive_loss +=loss[1]/n_tests
-
-    biases = np.array(biases)
-    b_mean = biases.mean()
-    b_std = biases.std()
-    return av_naive_loss, av_no_b_loss,av_model_loss,b_mean,b_std
 
 def plot_expriments_results(results,x,param:str):
     from matplotlib import patches as mpatches

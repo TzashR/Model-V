@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 from sklearn.preprocessing import MinMaxScaler
 
-from Generic_Calcs import likelihood_alphas, predict_variances
+from Generic_Calcs import likelihood_alphas, generate_variances
 
 
 # %%
@@ -306,7 +306,7 @@ plt.title("Model Vs Naive loss")
 plt.show()
 
 # %% Distribution of veracities
-variances = predict_variances(df.fillna(0), alphas)
+variances = generate_variances(df.fillna(0), alphas)
 # all_samples['vars']  = variances
 variances.plot.density()
 plt.show()

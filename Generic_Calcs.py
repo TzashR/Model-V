@@ -11,8 +11,8 @@ import pandas as pd
 import scipy.stats._continuous_distns
 from scipy.optimize import minimize
 from scipy.special import expit
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import MinMaxScaler
 
 
 # True calculations - what the simulations uses, not what "we" know
@@ -197,20 +197,20 @@ def prediction_unit_func_normal(dists_params, sds_gap=1):
     return prediction
 
 
-def likelihood_alphas(alphas: np.array, features: np.array, af_obs, is_obs, return_minus: bool):
+def likelihood_alphas(alphas: np.array, features: np.array, reported_y, true_y, return_minus=True):
     '''
     Calculates the likelihood of seeing the distances (is_obs
-    :param is_obs:
-    :param af_obs:
+    :param true_y:
+    :param reported_y:
     :param alphas:np.array Weight of every feature, dimension d
     :param features: features of every local sample, dimensions n,d
     :return:
     '''
-    distances = np.square(is_obs - af_obs)
-    first_term = -0.5 * sum(features @ alphas)
-    second_term = -(distances / 2) @ np.exp(-((features @ alphas)))
-    res = first_term + second_term
-    if return_minus: res = -res
+    distances = np.square(true_y - reported_y)
+    variances = generate_variances(features, alphas)
+    res = -0.5 * (sum(distances / variances + np.log(variances)))
+    if return_minus:
+        res = -res
     return res
 
 
@@ -246,7 +246,7 @@ def likelihood_fixed_sigma(sigma_square: float, is_obs: np.array, af_obs: np.arr
 
 def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs_village=10, feature_weights=None,
                                split_train_test=False,
-                               train_test_ratio=0.3, max_sigma=100):
+                               train_test_ratio=0.3, max_sigma=100, X=None, villages_divison=None, n_cat_features=None):
     '''
     Generates data similar to the water reports. We can use this to test our model where the goal is to learn
     the weights from the features and obs returned
@@ -258,7 +258,7 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
     '''
 
     if feature_weights is None:
-        ## I will generate weights s.t their sum is 4.6 because features are 0-1 and I want max sigma to be 100.
+        ## W ill generate weights s.t their sum is 4.6 because features are 0-1 and I want max sigma to be 100.
         ## so 4.6 is ln(100)
         feature_weights = np.random.uniform(-10, 10, n_features)  # TODO how big can they get?
 
@@ -275,36 +275,45 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
         feature_weights[feature_weights < 0] = negatives
     assert n_features == len(feature_weights)
 
-    villages_division = []
+    if villages_divison is None:
+        villages_division = []
 
-    village_num = 0
-    while len(villages_division) < n_samples:
-        n_obs_in_village = random.randint(min_obs_village, max_obs_village)
-        villages_division += [village_num] * n_obs_in_village
-        village_num += 1
+        village_num = 0
+        while len(villages_division) < n_samples:
+            n_obs_in_village = random.randint(min_obs_village, max_obs_village)
+            villages_division += [village_num] * n_obs_in_village
+            village_num += 1
 
-    villages_division = np.array(villages_division[:n_samples])
+        villages_division = np.array(villages_division[:n_samples])
+
     villages = np.unique(villages_division)
 
-    n_cat_features = random.randint(0, n_features)
+    assert (np.unique(villages_division, return_counts=True)[1] >= min_obs_village).all() & (
+            np.unique(villages_division, return_counts=True)[
+                1] <= max_obs_village).all(), "Obs per village not what you wanted"
+
+    if n_cat_features is None:
+        n_cat_features = random.randint(0, n_features)
     n_con_features = n_features - n_cat_features
 
     con_features = np.random.rand(n_samples, n_con_features)  # array n_samples X n_con_features, each feature ~U(0,1)
     cat_features = np.random.choice([0, 1], (n_samples, n_cat_features))
 
-    X = np.concatenate([con_features, cat_features], axis=1)
-    variances = predict_variances(X, feature_weights)
-    israeli_obs = np.random.randint(0, 100, n_samples)
-    obs_no_clip = np.random.normal(israeli_obs, np.sqrt(variances))
+    if X is None:
+        X = np.concatenate([con_features, cat_features], axis=1)
+
+    variances = generate_variances(X, feature_weights)
+    actual_y = np.random.randint(0, 100, n_samples)
+    obs_no_clip = np.random.normal(actual_y, np.sqrt(variances))
     obs = np.clip(obs_no_clip, 0, 100)
 
     count_clip_diff = sum(obs_no_clip != obs)
     # print(f"count_clip_diff = {count_clip_diff}")
 
     if not split_train_test:
-        df = pd.DataFrame({'true_y': israeli_obs, 'local_y': obs, "variance": variances})
+        df = pd.DataFrame({'true_y': actual_y, 'local_y': obs, "variance": variances})
         df = pd.concat([df, pd.DataFrame(X)], axis=1)
-        return {'X': X, 'israeli_obs': israeli_obs, 'af_obs': obs, 'weights': feature_weights,
+        return {'X': X, 'israeli_obs': actual_y, 'af_obs': obs, 'weights': feature_weights,
                 'villages_division': villages_division, 'villages': villages, "df": df}
 
     n_train_villages = round((1 - train_test_ratio) * len(villages))
@@ -320,8 +329,8 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
     X_test = X[test_indices]
     variances_train = variances[train_indices]
     variances_test = variances[test_indices]
-    is_obs_train = israeli_obs[train_indices]
-    is_obs_test = israeli_obs[test_indices]
+    is_obs_train = actual_y[train_indices]
+    is_obs_test = actual_y[test_indices]
     obs_train = obs[train_indices]
     obs_test = obs[test_indices]
 
@@ -331,20 +340,23 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
             "villages": villages, 'weights': feature_weights}
 
 
-def predict_variances(X, alphas, bias=0):
-    return np.exp(X @ alphas + bias)
+def generate_variances(X, alphas, beta=0, noise=None):
+    if noise is None:
+        noise = 0
+    else:
+        assert (len(noise) == X.shape[0])
+    return np.exp(X @ alphas + beta + noise)
 
 
 def water_model_loss(bias, X, villages_division, obs, is_obs, alphas, for_optim=False):
-    model_loss_reg = 0
-    naive_loss_reg = 0
-    model_loss_root = 0
-    naive_loss_root = 0
-
     villages_unique = np.unique(villages_division)
-    variances = predict_variances(X, alphas, bias)
+    variances = generate_variances(X, alphas, bias)
 
     res_dic = {}
+
+    true_y = []
+    naive_y = []
+    model_y = []
 
     for v in villages_unique:
         indices = (villages_division == v)
@@ -354,24 +366,24 @@ def water_model_loss(bias, X, villages_division, obs, is_obs, alphas, for_optim=
         obs_v = obs[indices]
         is_obs_v = is_obs[indices]
         true_av = is_obs_v.mean()
+        true_y.append(true_av)
 
         # model_weights = np.reciprocal(variances_v) + bias
         model_weights = np.reciprocal(variances_v)
         model_av = np.dot(model_weights, obs_v) / sum(model_weights)
-        model_loss_reg += (model_av - true_av) ** 2
-        model_loss_root += model_loss_reg * np.sqrt(sum(indices))
+        model_y.append(model_av)
 
         naive_av = obs_v.mean()
-        naive_loss_reg += (naive_av - true_av) ** 2
-        naive_loss_root += naive_loss_reg * np.sqrt(sum(indices))
+        naive_y.append(naive_av)
 
-    naive_loss_reg /= len(villages_unique)
-    model_loss_reg /= len(villages_unique)
-    model_loss_root /= sum(np.sqrt(villages_division.value_counts()))
-    naive_loss_root /= sum(np.sqrt(villages_division.value_counts()))
+    true_y = np.array(true_y)
+    model_y = np.array(model_y)
+    naive_y = np.array(naive_y)
+
+    naive_loss_reg = mean_squared_error(naive_y, true_y)
+    model_loss_reg = mean_squared_error(model_y, true_y)
 
     res_dic['reg'] = (naive_loss_reg, model_loss_reg)
-    res_dic['root'] = (naive_loss_root, model_loss_root)
 
     if for_optim:
         return model_loss_reg
@@ -439,7 +451,7 @@ def simulation_loss_per_agg_level(data_df, agg_size, train_size=0.7):
     :return:
     '''
     n_samples = len(data_df)
-    X = data_df.drop(['true_y', 'local_y', 'variance'])
+    X = data_df.drop(columns=['true_y', 'local_y', 'variance'])
     n_features = X.shape[1]
     n_villages = n_samples // agg_size
     village_ids = list(range(n_villages))
@@ -469,16 +481,57 @@ def simulation_loss_per_agg_level(data_df, agg_size, train_size=0.7):
     alphas = minimize(likelihood_alphas, alphas_0,
                       (X_train, local_y_train, true_y_train, True),
                       method='Nelder-Mead')['x']
-    beta_0 = 0
-    beta = minimize(water_model_loss,beta_0,(X_train, train_villages, local_y_train, true_y_train, alphas, True))['x']
+    beta_0 = np.array([0])
+    beta = minimize(water_model_loss, beta_0, (X_train, train_villages, local_y_train, true_y_train, alphas, True))['x']
 
-    v_pred_train = predict_variances(X_train,alphas,beta)
+    v_pred_train = generate_variances(X_train, alphas, beta)
     v_loss_train = mean_squared_error(variances_train, v_pred_train)
 
-    v_pred_test = predict_variances(X_test,alphas,beta)
+    v_pred_test = generate_variances(X_test, alphas, beta)
     v_loss_test = mean_squared_error(variances_test, v_pred_test)
 
-    naive_loss_train, model_loss_train = water_model_loss(beta,X_train,train_villages,local_y_train,true_y_train,alphas)['reg']
+    train_losses = \
+        water_model_loss(beta, X_train, train_villages, local_y_train, true_y_train, alphas)['reg']
+
+    test_losses = \
+        water_model_loss(beta, X_test, test_villages, local_y_test, true_y_test, alphas)['reg']
+
+    # correlation variances and diffrences
+    # y_diff_test = np.square(local_y_test - true_y_test) #TODO add correlation variances and differences
+
+    return {"train_losses": train_losses, "test_losses": test_losses, 'beta': beta, 'fi': alphas,
+            "variance_loss_train": v_loss_train, "variance_loss_test": v_loss_test}
 
 
+def gen_samples(X, feature_weights, beta, mu=None, obs_lower_bound=0, obs_upper_bound=100):
+    n_samples = X.shape[0]
+    variances = generate_variances(X, feature_weights, beta=beta)
+    if mu is None:
+        mu = np.random.randint(obs_lower_bound, obs_upper_bound, n_samples)
+    assert (len(mu) == n_samples)
+    obs_no_clip = np.random.normal(mu, np.sqrt(variances))
+    obs = np.clip(obs_no_clip, obs_lower_bound, obs_upper_bound)
+    return obs, mu, variances
 
+
+def calc_model_predictions(df, true_y_col="true_y", reported_y_col='local_y',
+                           estimated_variance_col="estimated_variance",
+                           prediction_unit_col='village'):
+    '''
+    Calculates 0-1 loss on the village division means.
+    :param df:
+    :return:
+    '''
+
+    df= df.assign(var_inverse = 1/df[estimated_variance_col])
+
+    total_weights_per_pu = df[[prediction_unit_col, 'var_inverse']].groupby(prediction_unit_col).sum()
+    total_weights_per_pu = total_weights_per_pu.rename(columns={'var_inverse': 'weights_sum'})
+    df = df.merge(total_weights_per_pu, on=prediction_unit_col)
+    df['sample_contribution'] = df['var_inverse'] * df['local_y'] / df['weights_sum']
+
+    means_df = df[[prediction_unit_col, true_y_col, reported_y_col]].groupby(prediction_unit_col).mean()
+    model_pred = df[[prediction_unit_col, 'sample_contribution']].groupby(prediction_unit_col).sum()
+    results_df = pd.DataFrame({"true_mean": means_df[true_y_col], "naive_mean": means_df[reported_y_col],
+                               'model_mean': model_pred['sample_contribution']})
+    return results_df

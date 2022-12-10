@@ -1,0 +1,2 @@
+n_features,n_samples,obs_per_village,feautre_power,count_accuracy,mse_naive,mse_model,count_accuracy_optimal,mse_naive_optimal,mse_model_optimal
+1,100,2,1,0.52,421.94122461598994,212.5309327541754,0.46,421.94122461598994,208.48462353092924

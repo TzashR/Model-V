@@ -246,10 +246,14 @@ def likelihood_fixed_sigma(sigma_square: float, is_obs: np.array, af_obs: np.arr
 
 def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs_village=10, feature_weights=None,
                                split_train_test=False,
-                               train_test_ratio=0.3, max_sigma=100, X=None, villages_divison=None, n_cat_features=None):
+                               train_test_ratio=0.3, max_sigma=100, X=None, villages_divison=None, n_cat_features=None,
+                               feature_raise_power=1, beta_feautre_col=True):
     '''
     Generates data similar to the water reports. We can use this to test our model where the goal is to learn
     the weights from the features and obs returned
+    :param feature_raise_power: The power to wich we raise the feautres.
+    This is here is a cheap trick to somewhat control the feature's distribution.
+     In some of the experiments I want them to be rather high so I take their root (power = 1/3 for example)
     :param train_test_ratio:
     :param n_features:
     :param n_samples:
@@ -260,7 +264,8 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
     if feature_weights is None:
         ## W ill generate weights s.t their sum is 4.6 because features are 0-1 and I want max sigma to be 100.
         ## so 4.6 is ln(100)
-        feature_weights = np.random.uniform(-10, 10, n_features)  # TODO how big can they get?
+        feature_weights = np.random.uniform(-10, 10,
+                                            n_features + 1 if beta_feautre_col else n_features)  # TODO how big can they get?
 
         ### I normalize the positives and the negatives separately
         # feature_weights = feature_weights/(sum(feature_weights))*2*math.log(max_sigma) #TODO do I need to normalize this?
@@ -273,18 +278,30 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
 
         feature_weights[feature_weights > 0] = positives
         feature_weights[feature_weights < 0] = negatives
-    assert n_features == len(feature_weights)
+
+    if beta_feautre_col:
+        assert(n_features + 1 == len(feature_weights))
+    else:
+        assert ( n_features == len(feature_weights))
 
     if villages_divison is None:
         villages_division = []
+        actual_y = []
 
         village_num = 0
         while len(villages_division) < n_samples:
             n_obs_in_village = random.randint(min_obs_village, max_obs_village)
+            village_y = random.randint(0,100)
+
             villages_division += [village_num] * n_obs_in_village
+            actual_y += [village_y]*n_obs_in_village
+
             village_num += 1
 
         villages_division = np.array(villages_division[:n_samples])
+        actual_y = np.array(actual_y[:n_samples])
+
+        assert len(actual_y) == len(villages_division)
 
     villages = np.unique(villages_division)
 
@@ -296,23 +313,28 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
         n_cat_features = random.randint(0, n_features)
     n_con_features = n_features - n_cat_features
 
-    con_features = np.random.rand(n_samples, n_con_features)  # array n_samples X n_con_features, each feature ~U(0,1)
+    con_features = np.random.rand(n_samples, n_con_features) ** (
+        feature_raise_power)  # array n_samples X n_con_features, each feature ~U(0,1)
     cat_features = np.random.choice([0, 1], (n_samples, n_cat_features))
 
     if X is None:
         X = np.concatenate([con_features, cat_features], axis=1)
+        if beta_feautre_col:
+            X = np.concatenate([X, np.ones(shape=(n_samples, 1))],axis = 1)
 
     variances = generate_variances(X, feature_weights)
-    actual_y = np.random.randint(0, 100, n_samples)
+
+
     obs_no_clip = np.random.normal(actual_y, np.sqrt(variances))
     obs = np.clip(obs_no_clip, 0, 100)
 
     count_clip_diff = sum(obs_no_clip != obs)
     # print(f"count_clip_diff = {count_clip_diff}")
 
+    df = pd.DataFrame({'true_y': actual_y, 'local_y': obs, "variance": variances})
+    df = pd.concat([df, pd.DataFrame(X)], axis=1)
+
     if not split_train_test:
-        df = pd.DataFrame({'true_y': actual_y, 'local_y': obs, "variance": variances})
-        df = pd.concat([df, pd.DataFrame(X)], axis=1)
         return {'X': X, 'israeli_obs': actual_y, 'af_obs': obs, 'weights': feature_weights,
                 'villages_division': villages_division, 'villages': villages, "df": df}
 
@@ -322,6 +344,8 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
 
     train_indices = np.isin(villages_division, train_villages)
     test_indices = ~train_indices
+
+    df['is_train'] = train_indices
 
     assert (sum(train_indices) + sum(test_indices) == n_samples)
 
@@ -337,15 +361,15 @@ def generate_none_spatial_data(n_features, n_samples, min_obs_village=1, max_obs
     return {'X_train': X_train, 'X_test': X_test, 'variances_train': variances_train,
             'variances_test': variances_test, 'is_train': is_obs_train, 'is_test': is_obs_test, 'obs_train': obs_train,
             'obs_test': obs_test, 'test_villages': test_villages, "train_villages": train_villages,
-            "villages": villages, 'weights': feature_weights}
+            "villages": villages, 'weights': feature_weights,"df":df,'villages_division': villages_division}
 
 
-def generate_variances(X, alphas, beta=0, noise=None):
+def generate_variances(X, alphas, noise=None):
     if noise is None:
         noise = 0
     else:
         assert (len(noise) == X.shape[0])
-    return np.exp(X @ alphas + beta + noise)
+    return np.exp(X @ alphas + noise)
 
 
 def water_model_loss(bias, X, villages_division, obs, is_obs, alphas, for_optim=False):
@@ -523,7 +547,7 @@ def calc_model_predictions(df, true_y_col="true_y", reported_y_col='local_y',
     :return:
     '''
 
-    df= df.assign(var_inverse = 1/df[estimated_variance_col])
+    df = df.assign(var_inverse=1 / df[estimated_variance_col])
 
     total_weights_per_pu = df[[prediction_unit_col, 'var_inverse']].groupby(prediction_unit_col).sum()
     total_weights_per_pu = total_weights_per_pu.rename(columns={'var_inverse': 'weights_sum'})
@@ -535,3 +559,17 @@ def calc_model_predictions(df, true_y_col="true_y", reported_y_col='local_y',
     results_df = pd.DataFrame({"true_mean": means_df[true_y_col], "naive_mean": means_df[reported_y_col],
                                'model_mean': model_pred['sample_contribution']})
     return results_df
+
+
+def count_accuracy(results_df):
+    '''Results df is the output of calc_model_predictions'''
+    diff_model = np.abs(results_df['true_mean'] - results_df['model_mean'])
+    diff_naive = np.abs(results_df['true_mean'] - results_df['naive_mean'])
+    return sum(diff_model < diff_naive) / len(results_df)
+
+
+def results_mse(results_df):
+    '''Results df is the output of calc_model_predictions'''
+    diff_model = np.square(results_df['true_mean'] - results_df['model_mean'])/len(results_df)
+    diff_naive = np.square(results_df['true_mean'] - results_df['naive_mean'])/len(results_df)
+    return (diff_model,diff_naive)
